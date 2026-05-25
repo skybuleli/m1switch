@@ -15,8 +15,10 @@ bool NroLoader::ParseHeader(std::span<const u8> buffer,
                             NroPackedHeader& header) {
     if (buffer.size() < sizeof(NroPackedHeader)) return false;
 
-    // Read individual fields to avoid any struct layout issues
-    const u8* d = buffer.data();
+    // Real NRO files have a 16-byte preamble (B instruction) before the header
+    // so the actual NRO0 header starts at offset 0x10
+    if (buffer.size() < 0x10 + sizeof(NroPackedHeader)) return false;
+    const u8* d = buffer.data() + 0x10;
     header.magic        = (u32)d[0] | ((u32)d[1] << 8) | ((u32)d[2] << 16) | ((u32)d[3] << 24);
     header.version      = (u32)d[4] | ((u32)d[5] << 8) | ((u32)d[6] << 16) | ((u32)d[7] << 24);
     header.size         = (u32)d[8] | ((u32)d[9] << 8) | ((u32)d[10] << 16) | ((u32)d[11] << 24);
