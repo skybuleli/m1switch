@@ -1,35 +1,36 @@
 #pragma once
 
 #include "common/Types.h"
-#include "common/Log.h"
-
-#include <mach/mach.h>
+#include <signal.h>
 #include <functional>
 
-using SvcHandlerFn = std::function<void(u32 brk_tag, u32 svc_num,
-                                        arm_unified_thread_state* state)>;
+// On ARM64 macOS, BRK #imm generates SIGTRAP.
+// Catches it, decodes BRK tag → SVC number,
+// dispatches handler, advances PC.
 
-class MachExceptionHandler {
+struct __attribute__((aligned(16))) GuestThreadState {
+    u64 x[31];   // x0-x30
+    u64 sp;
+    u64 pc;
+};
+
+using SvcHandlerFn = std::function<void(u32 svc_num, GuestThreadState* state)>;
+
+class ExceptionHandler {
 public:
-    MachExceptionHandler();
-    ~MachExceptionHandler();
-
-    MachExceptionHandler(const MachExceptionHandler&) = delete;
-    MachExceptionHandler& operator=(const MachExceptionHandler&) = delete;
+    ExceptionHandler();
+    ~ExceptionHandler();
+    ExceptionHandler(const ExceptionHandler&) = delete;
+    ExceptionHandler& operator=(const ExceptionHandler&) = delete;
 
     void SetSvcDispatch(SvcHandlerFn fn);
-    Result InstallOnCurrentThread();
-    void Run();
-    void Stop();
-
-    // Expose the port for external use (e.g. task_set_exception_ports)
-    mach_port_t Port() const { return exception_port_; }
+    Result Install();
 
 private:
-    void HandleOne();
-    static u32 TagToSvc(u32 tag);
+    static void SigTrapHandler(int sig, siginfo_t* info, void* uap);
+    static ExceptionHandler* s_instance;
 
-    mach_port_t exception_port_ = MACH_PORT_NULL;
-    bool running_ = false;
     SvcHandlerFn dispatch_;
+    struct sigaction old_action_{};
+    bool installed_ = false;
 };
