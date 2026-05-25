@@ -56,5 +56,6 @@ private:
 
     bool ParseHeader(std::span<const u8> buffer, NroPackedHeader& header);
 
+    u32 header_off_ = 0;
     Memory& memory_;
 };

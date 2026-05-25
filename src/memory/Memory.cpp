@@ -75,13 +75,13 @@ Result Memory::MapPhysical(u64 address, size_t size, Permission perm,
         return Result::OutOfMemory;
     }
 
-    // Set protection
-    mach_vm_protect(mach_task_self(), abs_addr, size, false, prot);
-
-    // Copy initial data if provided
+    // Copy initial data while memory is still writable
     if (data) {
         std::memcpy(reinterpret_cast<void*>(abs_addr), data, size);
     }
+
+    // Set protection
+    mach_vm_protect(mach_task_self(), abs_addr, size, false, prot);
 
     // Track
     std::lock_guard<std::mutex> lock(mutex_);

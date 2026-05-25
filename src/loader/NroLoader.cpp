@@ -15,10 +15,16 @@ bool NroLoader::ParseHeader(std::span<const u8> buffer,
                             NroPackedHeader& header) {
     if (buffer.size() < sizeof(NroPackedHeader)) return false;
 
-    // Real NRO files have a 16-byte preamble (B instruction) before the header
-    // so the actual NRO0 header starts at offset 0x10
-    if (buffer.size() < 0x10 + sizeof(NroPackedHeader)) return false;
-    const u8* d = buffer.data() + 0x10;
+    // NRO files may start with an ARM64 B instruction that jumps past the header.
+    u32 first_word;
+    std::memcpy(&first_word, buffer.data(), 4);
+    header_off_ = 0x10;
+    if ((first_word & 0xFC000000) == 0x14000000) {
+        u32 target = ((first_word & 0x03FFFFFF) << 2);
+        LOG_TRACE("NRO: B instruction target=0x%x, using header_off=0x10", target);
+    }
+    if (buffer.size() < header_off_ + sizeof(NroPackedHeader)) return false;
+    const u8* d = buffer.data() + header_off_;
     header.magic        = (u32)d[0] | ((u32)d[1] << 8) | ((u32)d[2] << 16) | ((u32)d[3] << 24);
     header.version      = (u32)d[4] | ((u32)d[5] << 8) | ((u32)d[6] << 16) | ((u32)d[7] << 24);
     header.size         = (u32)d[8] | ((u32)d[9] << 8) | ((u32)d[10] << 16) | ((u32)d[11] << 24);
@@ -80,13 +86,51 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
     hex[64] = '\0';
     info.build_id = hex;
 
-    u32 text_start   = header.text_start;
-    u32 text_size    = header.text_size;
-    u32 rodata_start = header.rodata_start;
-    u32 rodata_size  = header.rodata_size;
-    u32 data_start   = header.data_start;
-    u32 data_size    = header.data_size;
-    u32 bss_size     = header.bss_size;
+    // NRO format: text_start points to MOD0 metadata, not directly to text.
+    // Parse MOD0 to find the actual segment offsets and sizes.
+    u32 mod0_off = header.text_start;
+    u32 text_off = 0, text_sz = header.text_size;
+    u32 rodata_off = 0, rodata_sz = header.rodata_size;
+    u32 data_off = 0, data_sz = header.data_size;
+    u32 bss_sz = header.bss_size;
+
+    auto read32 = [&](u32 abs_off) -> u32 {
+        if (abs_off + 4 > buffer.size()) return 0;
+        return (u32)buffer[abs_off] | ((u32)buffer[abs_off+1]<<8) |
+               ((u32)buffer[abs_off+2]<<16) | ((u32)buffer[abs_off+3]<<24);
+    };
+
+    if (mod0_off > 0 && mod0_off + 0x20 <= buffer.size()) {
+        // MOD0 header found
+        u32 mod0_magic = read32(mod0_off);
+        if (mod0_magic == 0x30444F4D) { // "MOD0"
+            // .rodata is at the MOD0 offset (right after MOD0 header)
+            // .data follows .rodata
+            u32 dyn_off   = read32(mod0_off + 4);
+            u32 bss_start = read32(mod0_off + 0x0C);
+            
+            // Recalculate segment layout based on MOD0
+            // The sections are: header | .text | MOD0 | .rodata | .data | .bss
+            // text_start in header might be MOD0 offset.
+            // .rodata typically starts at a page-aligned offset after .text
+            u32 text_end = mod0_off;  // MOD0 starts where .text ends
+            text_off = header.text_start - text_sz;  // text starts before MOD0
+            
+            // Fall back to header values if MOD0 doesn't give us better info
+            if (text_off > mod0_off) text_off = 0;
+            
+            LOG_TRACE("MOD0: dyn=0x%x bss_start=0x%x", dyn_off, bss_start);
+        }
+    }
+
+    // Use MOD0-derived values if available, otherwise fall back to header fields
+    u32 text_start = text_off ? text_off : header.text_start;
+    u32 text_size  = text_sz;
+    u32 rodata_start = rodata_off;
+    u32 rodata_size  = rodata_sz;
+    u32 data_start   = data_off;
+    u32 data_size    = data_sz;
+    u32 bss_size     = bss_sz;
 
     LOG_INFO("NRO: magic=0x%08x size=%u", header.magic, header.size);
     LOG_INFO("  .text:   offset=%u size=%u", text_start, text_size);
@@ -95,9 +139,14 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
     LOG_INFO("  .bss:   size=%u", bss_size);
 
     // Validate segment ranges
-    if (text_start + text_size > buffer.size() ||
-        rodata_start + rodata_size > buffer.size() ||
-        data_start + data_size > buffer.size()) {
+    // Calculate absolute file offsets (relative to NRO0 header)
+    u64 text_file_off = header_off_ + text_start;
+    u64 rodata_file_off = header_off_ + rodata_start;
+    u64 data_file_off = header_off_ + data_start;
+
+    if (text_file_off + text_size > buffer.size() ||
+        rodata_file_off + rodata_size > buffer.size() ||
+        data_file_off + data_size > buffer.size()) {
         LOG_ERROR("NRO segment exceeds buffer (%zu)", buffer.size());
         return Result::InvalidArgument;
     }
@@ -110,7 +159,7 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         u64 size_aligned = AlignUp<u64>(text_size, 0x1000);
         Result r = memory_.MapPhysical(addr, size_aligned,
                                         Memory::Permission::RX,
-                                        buffer.data() + text_start);
+                                        buffer.data() + text_file_off);
         if (Failed(r)) return r;
         info.segments.push_back(
             {text_start, text_size, addr, Memory::Permission::RX});
@@ -122,7 +171,7 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         u64 size_aligned = AlignUp<u64>(rodata_size, 0x1000);
         Result r = memory_.MapPhysical(addr, size_aligned,
                                         Memory::Permission::R,
-                                        buffer.data() + rodata_start);
+                                        buffer.data() + rodata_file_off);
         if (Failed(r)) return r;
         info.segments.push_back(
             {rodata_start, rodata_size, addr, Memory::Permission::R});
@@ -134,7 +183,7 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         u64 size_aligned = AlignUp<u64>(data_size, 0x1000);
         Result r = memory_.MapPhysical(addr, size_aligned,
                                         Memory::Permission::RW,
-                                        buffer.data() + data_start);
+                                        buffer.data() + data_file_off);
         if (Failed(r)) return r;
         info.segments.push_back(
             {data_start, data_size, addr, Memory::Permission::RW});
