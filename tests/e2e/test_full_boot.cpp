@@ -78,7 +78,7 @@ int main() {
     SvcTable_Register(0x07, MySvcHandler);
 
     // ── 6. Install SIGTRAP handler ────────────────
-    ExceptionHandler sig_handler;
+    SigHandler sig_handler;
     sig_handler.SetSvcDispatch([](u32 svc_num, GuestThreadState* state) {
         SvcHandler_Dispatch(svc_num, state);
     });

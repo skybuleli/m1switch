@@ -190,7 +190,7 @@
     splitView.dividerStyle = NSSplitViewDividerStyleThin;
     splitView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
-    EmuScreenView* screenView = [[EmuScreenView alloc]
+    __block EmuScreenView* screenView = [[EmuScreenView alloc]
         initWithFrame:NSMakeRect(0, 0, 1280, 540) memory:nil];
     LogPanelView* logPanel = [[LogPanelView alloc] initWithFrame:NSMakeRect(0, 0, 1280, 180)];
 
@@ -205,7 +205,14 @@
     [_gameWindow makeKeyAndOrderFront:nil];
 
     LOG_INFO("Game window opened: %s", [[path lastPathComponent] UTF8String]);
+    // ── Load and run the NRO ─────────────────────────
+    // Phase P0: this happens asynchronously after window creation
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        LOG_INFO("Loading NRO: %s", [path UTF8String]);
+        [screenView loadAndRunNRO:[path UTF8String]];
+    });
 }
+
 
 // ── Settings ────────────────────────────────────────────────
 

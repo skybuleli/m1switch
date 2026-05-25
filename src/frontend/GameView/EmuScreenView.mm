@@ -1,6 +1,11 @@
 #import "EmuScreenView.h"
 #include "common/Log.h"
 #include "services/Nv.h"
+#include "loader/NroLoader.h"
+#include "cpu/NativeExec.h"
+#include "cpu/ExceptionHandler.h"
+#include "kernel/SvcTable.h"
+
 
 @implementation EmuScreenView
 
@@ -64,6 +69,51 @@
 
 - (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {
     LOG_DEBUG("Drawable size: %.0fx%.0f", size.width, size.height);
+}
+
+
+// ── Load NRO and start emulation ────────────────────────────
+- (void)loadAndRunNRO:(const char*)path {
+    LOG_INFO("EmuScreenView: loading %s", path);
+
+    NroLoader loader(*_memory);
+    NroLoadInfo info;
+    Result r = loader.LoadFromFile(path, info);
+    if (Failed(r)) { LOG_ERROR("Failed to load NRO"); return; }
+
+    if (info.segments.empty()) { LOG_ERROR("NRO has no segments"); return; }
+
+    auto& seg = info.segments[0];
+    u8* text = _memory->Pointer(seg.guest_address);
+    if (!text) { LOG_ERROR("Bad text pointer"); return; }
+
+    std::vector<std::pair<u32, u32>> svc_map;
+    NativeExec::PatchSVCs(text, seg.size, svc_map);
+    LOG_INFO("Patched %zu SVCs, entry=0x%llx", svc_map.size(), info.entry_point);
+
+    _memory->SetupStack(0x100000);
+    SvcTable_Init();
+
+    // Set up NV service wiring
+    ServiceNv_SetMemory(_memory);
+    ServiceNv_SetGpuFifo(&_tracker->GetGPFifo());
+    ServiceNv_SetTracker(_tracker);
+    _tracker->SetMemory(_memory);
+
+    // Install SIGTRAP handler for SVC dispatch
+    SigHandler sig_handler;
+    sig_handler.SetSvcDispatch([](u32 svc, GuestThreadState* st) {
+        SvcHandler_Dispatch(svc, st);
+    });
+    sig_handler.Install();
+
+    LOG_INFO("Starting guest: PC=0x%llx, SP=0x%llx",
+             _memory->BaseAddress() + info.entry_point,
+             _memory->BaseAddress() + _memory->GetStackTop());
+
+    NativeExec::RunGuest(
+        _memory->BaseAddress() + info.entry_point,
+        _memory->BaseAddress() + _memory->GetStackTop(), 0);
 }
 
 - (void)toggleFullscreen {

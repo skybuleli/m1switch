@@ -25,4 +25,6 @@
 - (instancetype)initWithFrame:(CGRect)frame memory:(Memory*)mem;
 - (void)toggleFullscreen;
 
+- (void)loadAndRunNRO:(const char*)path;
+
 @end

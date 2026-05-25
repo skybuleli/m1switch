@@ -4,31 +4,28 @@
 #include <signal.h>
 #include <functional>
 
-// On ARM64 macOS, BRK #imm generates SIGTRAP.
-// Catches it, decodes BRK tag → SVC number,
-// dispatches handler, advances PC.
-
 struct __attribute__((aligned(16))) GuestThreadState {
-    u64 x[31];   // x0-x30
+    u64 x[31];
     u64 sp;
     u64 pc;
 };
 
 using SvcHandlerFn = std::function<void(u32 svc_num, GuestThreadState* state)>;
 
-class ExceptionHandler {
+// Renamed to avoid conflict with Mach exception_handler_t typedef
+class SigHandler {
 public:
-    ExceptionHandler();
-    ~ExceptionHandler();
-    ExceptionHandler(const ExceptionHandler&) = delete;
-    ExceptionHandler& operator=(const ExceptionHandler&) = delete;
+    SigHandler();
+    ~SigHandler();
+    SigHandler(const SigHandler&) = delete;
+    SigHandler& operator=(const SigHandler&) = delete;
 
     void SetSvcDispatch(SvcHandlerFn fn);
     Result Install();
 
 private:
-    static void SigTrapHandler(int sig, siginfo_t* info, void* uap);
-    static ExceptionHandler* s_instance;
+    static void TrapHandler(int sig, siginfo_t* info, void* uap);
+    static SigHandler* s_instance;
 
     SvcHandlerFn dispatch_;
     struct sigaction old_action_{};
