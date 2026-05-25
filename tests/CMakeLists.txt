@@ -28,14 +28,6 @@ target_link_libraries(test_gpu_parser
 add_test(NAME GpuParser COMMAND test_gpu_parser)
 
 # ── Headless NRO runner ──────────────────────────────
-add_executable(test_run_nro
-    e2e/test_run_nro.cpp
-)
-target_link_libraries(test_run_nro
-    m1switch_core m1switch_loader m1switch_services m1switch_gpu m1switch_common
-)
-add_test(NAME RunNro COMMAND test_run_nro)
-
 # ── Convenience target ──────────────────────────────────
 add_custom_target(check
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure

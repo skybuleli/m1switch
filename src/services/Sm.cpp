@@ -27,6 +27,29 @@ public:
         IpcManager::Instance().RegisterService("fs:", nullptr);
         IpcManager::Instance().RegisterService("set:", nullptr);
         IpcManager::Instance().RegisterService("set:sys", nullptr);
+        IpcManager::Instance().RegisterService("appletOE:", nullptr);
+        IpcManager::Instance().RegisterService("appletAE:", nullptr);
+        IpcManager::Instance().RegisterService("applet", nullptr);
+        IpcManager::Instance().RegisterService("ns:", nullptr);
+        IpcManager::Instance().RegisterService("ns:dev", nullptr);
+        IpcManager::Instance().RegisterService("ns:am2", nullptr);
+        IpcManager::Instance().RegisterService("ldr:", nullptr);
+        IpcManager::Instance().RegisterService("ldr:pm", nullptr);
+        IpcManager::Instance().RegisterService("spl:", nullptr);
+        IpcManager::Instance().RegisterService("spl:mig", nullptr);
+        IpcManager::Instance().RegisterService("acc:u0", nullptr);
+        IpcManager::Instance().RegisterService("acc:u1", nullptr);
+        IpcManager::Instance().RegisterService("pcv:", nullptr);
+        IpcManager::Instance().RegisterService("psc:", nullptr);
+        IpcManager::Instance().RegisterService("pm:", nullptr);
+        IpcManager::Instance().RegisterService("nifm:", nullptr);
+        IpcManager::Instance().RegisterService("nifm:oa", nullptr);
+        IpcManager::Instance().RegisterService("ro:", nullptr);
+        IpcManager::Instance().RegisterService("erpt:", nullptr);
+        IpcManager::Instance().RegisterService("fatal:", nullptr);
+        IpcManager::Instance().RegisterService("btm:", nullptr);
+        IpcManager::Instance().RegisterService("nfc:", nullptr);
+
     }
 
     const char* Name() const override { return "sm:"; }
@@ -108,6 +131,20 @@ private:
     static void SetInitialize();
     static void ApmInitialize();
     static void TimeInitialize();
+    static void AmInitialize();
+    static void NsInitialize();
+    static void LdrInitialize();
+    static void SplInitialize();
+    static void AccountInitialize();
+    static void PcvInitialize();
+    static void PscInitialize();
+    static void PmInitialize();
+    static void NifmInitialize();
+    static void RoInitialize();
+    static void ErptInitialize();
+    static void FatalInitialize();
+    static void BtmInitialize();
+    static void NfcInitialize();
 };
 
 // ── Forward declarations (defined in Vi.cpp / Nv.cpp) ──────
@@ -118,6 +155,20 @@ void SmService::HidInitialize() { extern void ServiceHid_Init(); ServiceHid_Init
 void SmService::SetInitialize() { extern void ServiceSet_Init(); ServiceSet_Init(); }
 void SmService::ApmInitialize() { extern void ServiceApm_Init(); ServiceApm_Init(); }
 void SmService::TimeInitialize(){ extern void ServiceTime_Init();ServiceTime_Init(); }
+void SmService::AmInitialize()   { extern void ServiceAm_Init();   ServiceAm_Init(); }
+void SmService::NsInitialize()   { extern void ServiceNs_Init();   ServiceNs_Init(); }
+void SmService::LdrInitialize()  { extern void ServiceLdr_Init();  ServiceLdr_Init(); }
+void SmService::SplInitialize()  { extern void ServiceSpl_Init();  ServiceSpl_Init(); }
+void SmService::AccountInitialize(){extern void ServiceAccount_Init();ServiceAccount_Init();}
+void SmService::PcvInitialize()  { extern void ServicePcv_Init();  ServicePcv_Init(); }
+void SmService::PscInitialize()  { extern void ServicePsc_Init();  ServicePsc_Init(); }
+void SmService::PmInitialize()   { extern void ServicePm_Init();   ServicePm_Init(); }
+void SmService::NifmInitialize() { extern void ServiceNifm_Init(); ServiceNifm_Init(); }
+void SmService::RoInitialize()   { extern void ServiceRo_Init();   ServiceRo_Init(); }
+void SmService::ErptInitialize() { extern void ServiceErpt_Init(); ServiceErpt_Init(); }
+void SmService::FatalInitialize(){ extern void ServiceFatal_Init();ServiceFatal_Init(); }
+void SmService::BtmInitialize()  { extern void ServiceBtm_Init();  ServiceBtm_Init(); }
+void SmService::NfcInitialize()  { extern void ServiceNfc_Init();  ServiceNfc_Init(); }
 
 // ── Global registration ─────────────────────────────────────
 static SmService g_sm_service;
