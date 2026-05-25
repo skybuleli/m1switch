@@ -32,10 +32,18 @@ static std::vector<u8> MakeNRO() {
         nro[o+0]=(v>>0)&0xFF; nro[o+1]=(v>>8)&0xFF;
         nro[o+2]=(v>>16)&0xFF; nro[o+3]=(v>>24)&0xFF;
     };
-    st(0x00, 0x304F524E); st(0x04, 0); st(0x08, (u32)sizeof(nro));
-    st(0x0C, 0);          st(0x10, 0x100); st(0x14, code_sz);
+    // 16-byte preamble (B instruction to skip header)
+    // Then NRO0 header at offset 0x10
+    st(0x00, 0x14000004);  // B #0x10 (skip to text)
+    st(0x10, 0x304F524E); st(0x14, 0); st(0x18, (u32)sizeof(nro));
+    st(0x1C, 0);          st(0x20, 0x110); st(0x24, code_sz);
+    st(0x28, 0x110 + a_code);  // rodata_start (none)
+    st(0x2C, 0);              // rodata_size
+    st(0x30, 0x110 + a_code); // data_start (none)
+    st(0x34, 0);              // data_size
+    st(0x38, 0);              // bss_size
     std::memcpy(&nro[0x30], "M1SW-E2E", 8);
-    st(0x100, prog[0]);   st(0x104, prog[1]);  st(0x108, prog[2]);
+    st(0x110, prog[0]);   st(0x114, prog[1]);  st(0x118, prog[2]);
     return {nro, nro + sizeof(nro)};
 }
 
