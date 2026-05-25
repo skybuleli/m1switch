@@ -214,7 +214,10 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         if (ptr) std::memset(ptr, 0, bss_size);
     }
 
-    info.entry_point = NRO_TEXT_BASE;
+    // Entry point: text usually starts with a 0x100-byte NRO0 header,
+    // so the actual code is at text_base + 0x100.
+    // MOD0 metadata within the text section gives the correct offset.
+    info.entry_point = NRO_TEXT_BASE + 0x100;
 
     LOG_INFO("Entry: 0x%llx, %zu segment(s) mapped",
              info.entry_point, info.segments.size());
