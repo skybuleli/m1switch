@@ -1,16 +1,16 @@
 # ── Guest entry trampoline ──────────────────────────────────
-# Clears all registers and jumps to guest code.
-# Arguments (C ABI): x0 = entry_point, x1 = stack_top (unused)
+# Jumps to guest code with a clean register state.
+# Preserves SP (host stack) so the guest has valid stack.
 
 .text
 .align 2
 .globl _GuestTrampoline
 
 _GuestTrampoline:
-    // Save entry point in x30 (will be zeroed later but we use it first)
+    // Save entry point (x0) before we zero everything
     mov     x30, x0
 
-    // Zero all general-purpose registers
+    // Zero all GPRs except SP (x29 is FP, x30 is entry point)
     mov     x0,  #0
     mov     x1,  #0
     mov     x2,  #0
@@ -41,7 +41,8 @@ _GuestTrampoline:
     mov     x27, #0
     mov     x28, #0
     mov     x29, #0
-    // x30 already has entry_point — don't zero it
+    // x30 has entry point
+    // SP is preserved from the host
 
-    // Jump to guest entry point via x30
+    // Jump to guest entry point
     br      x30
