@@ -1,6 +1,5 @@
 #include "services/Ipc.h"
 #include "common/Log.h"
-
 #include <cstring>
 #include <algorithm>
 
@@ -13,42 +12,80 @@ IpcManager& IpcManager::Instance() {
 }
 
 void IpcManager::RegisterService(const char* name, ServiceBase* service) {
-    LOG_INFO("IPC: service '%s' registered", name);
+    std::lock_guard<std::mutex> lock(mutex_);
+    services_[name] = service;
+    LOG_INFO("IPC: service '%s' registered @ %p", name, (void*)service);
 }
 
 u32 IpcManager::Connect(const char* name) {
-    // Find matching service
-    // Phase P0: dynamic lookup not implemented yet, return dummy session
-    LOG_DEBUG("IPC: Connect('%s') → session 0x%x", name, next_session_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = services_.find(name);
+    ServiceBase* svc = (it != services_.end()) ? it->second : nullptr;
+
+    u32 sid = next_session_++;
     Session s;
-    s.id = next_session_++;
+    s.id = sid;
     s.service_name = name;
-    s.service = nullptr;  // Phase P0: stub
+    s.service = svc;
     sessions_.push_back(s);
-    return s.id;
+
+    LOG_DEBUG("IPC: Connect('%s') → session 0x%x (svc=%p)", name, sid, (void*)svc);
+    return sid;
 }
 
-u32 IpcManager::HandleRequest(u32 session, const u8* data, size_t size,
+u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
                                u8* response, size_t* resp_size) {
-    LOG_DEBUG("IPC: HandleRequest(session=0x%x, size=%zu)", session, size);
-
-    // Phase P0: parse CMIF header, echo success
-    if (size < sizeof(IpcHeader)) {
-        LOG_WARN("IPC: message too small (%zu)", size);
-        return 0xFFFF;  // Error
+    // Find session
+    Session* session = nullptr;
+    for (auto& s : sessions_) {
+        if (s.id == session_handle) { session = &s; break; }
     }
 
-    // Parse header
-    const IpcHeader* hdr = reinterpret_cast<const IpcHeader*>(data);
-    u32 cmd_id = hdr->type;
+    if (!session) {
+        LOG_WARN("IPC: invalid session 0x%x", session_handle);
+        return 0xFFFF;
+    }
 
-    LOG_DEBUG("IPC: cmd_type=%u, raw_size=%u", cmd_id, hdr->raw_data_size);
+    if (size < sizeof(IpcRequest)) {
+        LOG_WARN("IPC: message too small (%zu)", size);
+        return 0xFFFF;
+    }
 
-    // Write a minimal CMIF response
-    IpcHeader* resp = reinterpret_cast<IpcHeader*>(response);
-    memset(resp, 0, sizeof(IpcHeader));
-    resp->type = 0;  // Success
-    *resp_size = sizeof(IpcHeader);
+    const IpcRequest* req = reinterpret_cast<const IpcRequest*>(data);
 
-    return 0;  // Success
+    // Build response
+    IpcResponse* resp = reinterpret_cast<IpcResponse*>(response);
+    memset(resp, 0, sizeof(IpcResponse));
+    resp->magic = 0x4942434F;  // "OCBI" in LE
+    resp->result = 0;
+    *resp_size = sizeof(IpcResponse);
+
+    if (session->service) {
+        size_t out_sz = 0;
+        // Raw data is after the header
+        const u8* raw_in = data + sizeof(IpcRequest);
+        size_t raw_in_size = (size > sizeof(IpcRequest)) ? size - sizeof(IpcRequest) : 0;
+        u8* raw_out = response + sizeof(IpcResponse);
+        size_t raw_out_max = (resp_size && *resp_size > sizeof(IpcResponse))
+                            ? *resp_size - sizeof(IpcResponse) : 0;
+
+        bool handled = session->service->HandleCommand(
+            req->cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
+
+        if (handled) {
+            resp->result = 0;
+            *resp_size = sizeof(IpcResponse) + raw_out_max;
+        } else {
+            LOG_WARN("IPC: unhandled cmd %u for '%s'",
+                     req->cmd_id, session->service_name.c_str());
+            resp->result = 1;  // Unhandled
+            *resp_size = sizeof(IpcResponse);
+        }
+    } else {
+        LOG_TRACE("IPC: session 0x%x ('%s') has no handler", session_handle,
+                 session->service_name.c_str());
+        *resp_size = sizeof(IpcResponse);
+    }
+
+    return resp->result;
 }

@@ -46,8 +46,7 @@
     MTLRenderPassDescriptor* desc = view.currentRenderPassDescriptor;
 
     if (desc && _rnd) {
-        GpuState3D dummyState;
-        _rnd->RenderFrame(dummyState, cmdBuf, desc);
+        _rnd->RenderFrame(cmdBuf, desc);
     }
 
     if (view.currentDrawable) {

@@ -4,6 +4,7 @@
 #include "gpu/maxwell/GpuState.h"
 #include "gpu/engine/Engine3D.h"
 #include "gpu/engine/GPFifo.h"
+#include "memory/Memory.h"
 
 // ── GPU State Tracker ──────────────────────────────────────
 // Orchestrates the full pipeline:
@@ -21,6 +22,8 @@ public:
     // ── State access ─────────────────────────────────
     const GpuState3D& GetState3D() const { return engine_3d_.State(); }
     GpuState3D& GetState3D() { return engine_3d_.State(); }
+    Memory* GetMemory() const { return memory_; }
+    void SetMemory(Memory* mem) { memory_ = mem; }
 
     // ── Dirty tracking ───────────────────────────────
     // Bitmask of dirty register groups (Phase 5+)
@@ -37,6 +40,7 @@ private:
 
     // Subchannel to engine mapping
     u32 subch_engine_map_[8] = {};
+    Memory* memory_ = nullptr;
 
     // Dirty flags (one bit per state group, Phase 5)
     u64 dirty_flags_ = 0;

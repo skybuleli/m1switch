@@ -7,29 +7,29 @@
 
 // ── Metal Renderer ──────────────────────────────────────────
 // Connects GpuState3D → Metal draw calls.
-// Phase 5: renders a hard-coded triangle to verify the pipeline.
+// Phase P0: reads VBO from guest memory, issues draw calls.
 
 class MetalRenderer {
 public:
     MetalRenderer(MetalDevice& device);
     ~MetalRenderer();
 
-    // Initialize shaders and pipeline state
     Result Initialize();
+    void SetStateTracker(StateTracker* tracker) { tracker_ = tracker; }
 
-    // Render a frame using the current GPU state
-    // @param state     Current 3D engine state from StateTracker
-    // @param cmdBuf    Command buffer to encode into
-    // @param passDesc  Render pass descriptor (from MTKView drawable)
-    void RenderFrame(const GpuState3D& state,
-                     id<MTLCommandBuffer> cmdBuf,
+    // Render the current GPU state from the tracker
+    void RenderFrame(id<MTLCommandBuffer> cmdBuf,
                      MTLRenderPassDescriptor* passDesc);
 
-    // ── Test triangle helpers (Phase 5) ───────────────
+    // Phase 5 test triangle
     void SetTestTriangle();
 
 private:
+    void RenderTriangle(id<MTLRenderCommandEncoder> enc);
+    void RenderFromGpuState(id<MTLRenderCommandEncoder> enc);
+
     MetalDevice& device_;
+    StateTracker* tracker_ = nullptr;
     id<MTLRenderPipelineState> pipeline_ = nil;
     id<MTLBuffer> vertex_buffer_ = nil;
     bool initialized_ = false;
