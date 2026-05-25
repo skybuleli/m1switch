@@ -1,9 +1,10 @@
 #import "EmuScreenView.h"
 #include "common/Log.h"
+#include "services/Nv.h"
 
 @implementation EmuScreenView
 
-- (instancetype)initWithFrame:(CGRect)frame {
+- (instancetype)initWithFrame:(CGRect)frame memory:(Memory*)mem {
     id<MTLDevice> mtlDev = MTLCreateSystemDefaultDevice();
     if (!mtlDev) { LOG_FATAL("Metal not supported"); return nil; }
 
@@ -11,8 +12,9 @@
     if (!self) return nil;
 
     _commandQueue = [mtlDev newCommandQueue];
+    // Create Memory if not provided
+    _memory = mem ? mem : new Memory();
 
-    // Configure view
     self.delegate = self;
     self.colorPixelFormat = MTLPixelFormatBGRA8Unorm_sRGB;
     self.depthStencilPixelFormat = MTLPixelFormatInvalid;
@@ -24,35 +26,39 @@
     metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm_sRGB;
     metalLayer.maximumDrawableCount = 3;
 
-    // Initialize C++ Metal device + renderer
+    // Create shared StateTracker and wire everything
+    _tracker = new StateTracker();
+    _tracker->SetMemory(mem);
+
+    // Connect MetalRenderer to the shared tracker
     _dev = new MetalDevice();
     _rnd = new MetalRenderer(*_dev);
+    _rnd->SetStateTracker(_tracker);
     _rnd->Initialize();
-    _rnd->SetTestTriangle();
+    _rnd->SetTestTriangle();  // fallback when no GPU state
 
-    LOG_INFO("EmuScreenView ready (%dx%d)", (int)frame.size.width, (int)frame.size.height);
+    // Connect NV service GPFifo to the shared tracker
+    ServiceNv_SetGpuFifo(&_tracker->GetGPFifo());
+    ServiceNv_SetTracker(_tracker);
+    ServiceNv_SetMemory(mem);
+
+    LOG_INFO("EmuScreenView ready with wired StateTracker");
     return self;
 }
 
 - (void)dealloc {
     delete _rnd;
     delete _dev;
+    delete _tracker;
+    // Memory freed by whoever created it (or leaked if we created it)
     [super dealloc];
 }
 
-// ── MTKViewDelegate ─────────────────────────────────────────
 - (void)drawInMTKView:(MTKView*)view {
     id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
     MTLRenderPassDescriptor* desc = view.currentRenderPassDescriptor;
-
-    if (desc && _rnd) {
-        _rnd->RenderFrame(cmdBuf, desc);
-    }
-
-    if (view.currentDrawable) {
-        [cmdBuf presentDrawable:view.currentDrawable];
-    }
-
+    if (desc && _rnd) _rnd->RenderFrame(cmdBuf, desc);
+    if (view.currentDrawable) [cmdBuf presentDrawable:view.currentDrawable];
     [cmdBuf commit];
 }
 

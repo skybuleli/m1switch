@@ -24,6 +24,7 @@ public:
     GpuState3D& GetState3D() { return engine_3d_.State(); }
     Memory* GetMemory() const { return memory_; }
     void SetMemory(Memory* mem) { memory_ = mem; }
+    GPFifo& GetGPFifo() { return gpfifo_; }
 
     // ── Dirty tracking ───────────────────────────────
     // Bitmask of dirty register groups (Phase 5+)

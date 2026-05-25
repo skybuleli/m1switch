@@ -12,3 +12,4 @@
 void ServiceNv_Init();
 void ServiceNv_SetMemory(class Memory* mem);
 void ServiceNv_SetGpuFifo(class GPFifo* fifo);
+void ServiceNv_SetTracker(class StateTracker* tracker);
