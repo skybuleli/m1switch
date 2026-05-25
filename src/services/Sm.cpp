@@ -20,8 +20,13 @@ public:
         IpcManager::Instance().RegisterService("hid:", nullptr);
         IpcManager::Instance().RegisterService("set:", nullptr);
         IpcManager::Instance().RegisterService("apm:", nullptr);
+        IpcManager::Instance().RegisterService("apm:sys", nullptr);
         IpcManager::Instance().RegisterService("time:", nullptr);
+        IpcManager::Instance().RegisterService("time:a", nullptr);
+        IpcManager::Instance().RegisterService("fsp-srv:", nullptr);
         IpcManager::Instance().RegisterService("fs:", nullptr);
+        IpcManager::Instance().RegisterService("set:", nullptr);
+        IpcManager::Instance().RegisterService("set:sys", nullptr);
     }
 
     const char* Name() const override { return "sm:"; }
@@ -56,10 +61,15 @@ private:
         name = name.c_str();
 
         // Register service if it's known but not yet registered
-        if (name == "vi:") EnsureService("vi:", ViInitialize);
-        else if (name == "vi:m") EnsureService("vi:m", ViInitialize);
-        else if (name == "nvdrv:") EnsureService("nvdrv:", NvInitialize);
-        else if (name == "hid:") (void)0;  // stub
+        if (name == "vi:")            EnsureService("vi:", ViInitialize);
+        else if (name == "vi:m")      EnsureService("vi:m", ViInitialize);
+        else if (name == "nvdrv:")    EnsureService("nvdrv:", NvInitialize);
+        else if (name == "fsp-srv:" || name == "fs:")
+                                      EnsureService("fsp-srv:", FsInitialize);
+        else if (name == "hid:")      EnsureService("hid:", HidInitialize);
+        else if (name == "set:")      EnsureService("set:", SetInitialize);
+        else if (name == "apm:")      EnsureService("apm:", ApmInitialize);
+        else if (name == "time:")     EnsureService("time:", TimeInitialize);
 
         u32 session = IpcManager::Instance().Connect(name.c_str());
         LOG_INFO("SM: GetService('%s') → session 0x%x", name.c_str(), session);
@@ -93,11 +103,21 @@ private:
 
     static void ViInitialize();
     static void NvInitialize();
+    static void FsInitialize();
+    static void HidInitialize();
+    static void SetInitialize();
+    static void ApmInitialize();
+    static void TimeInitialize();
 };
 
 // ── Forward declarations (defined in Vi.cpp / Nv.cpp) ──────
-void SmService::ViInitialize() { /* VI registers itself in Vi.cpp */ }
-void SmService::NvInitialize() { /* NV registers itself in Nv.cpp */ }
+void SmService::ViInitialize()  { extern void ServiceVi_Init();  ServiceVi_Init(); }
+void SmService::NvInitialize()  { extern void ServiceNv_Init();  ServiceNv_Init(); }
+void SmService::FsInitialize()  { extern void ServiceFs_Init();  ServiceFs_Init(); }
+void SmService::HidInitialize() { extern void ServiceHid_Init(); ServiceHid_Init(); }
+void SmService::SetInitialize() { extern void ServiceSet_Init(); ServiceSet_Init(); }
+void SmService::ApmInitialize() { extern void ServiceApm_Init(); ServiceApm_Init(); }
+void SmService::TimeInitialize(){ extern void ServiceTime_Init();ServiceTime_Init(); }
 
 // ── Global registration ─────────────────────────────────────
 static SmService g_sm_service;
