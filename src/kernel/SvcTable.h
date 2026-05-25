@@ -12,3 +12,6 @@ void SvcTable_Init();
 // Register a handler for an SVC number
 using SvcHandler = void(*)(u32 svc_num, GuestThreadState* state);
 void SvcTable_Register(u32 svc_num, SvcHandler handler);
+
+// Register all standard SVC handlers
+void SvcHandlers_RegisterAll();

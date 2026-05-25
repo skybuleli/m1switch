@@ -14,7 +14,7 @@ add_executable(test_full_boot
     e2e/test_full_boot.cpp
 )
 target_link_libraries(test_full_boot
-    m1switch_core m1switch_loader m1switch_common
+    m1switch_core m1switch_loader m1switch_services m1switch_common
 )
 add_test(NAME FullBoot COMMAND test_full_boot)
 

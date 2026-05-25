@@ -11,6 +11,7 @@ void SvcTable_Init() {
     if (s_initialized) return;
     s_svc_table.fill(nullptr);
     s_initialized = true;
+    SvcHandlers_RegisterAll();
     LOG_INFO("SVC table initialized (%u entries)", MAX_SVC);
 }
 
