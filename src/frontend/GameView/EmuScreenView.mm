@@ -71,6 +71,62 @@
     if (w) [w toggleFullScreen:nil];
 }
 
+- (void)captureScreenshot:(id)sender {
+    // Capture current Metal drawable and save to desktop
+    id<MTLTexture> texture = self.currentDrawable.texture;
+    if (!texture) return;
+
+    MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:texture.pixelFormat
+                                                                                    width:texture.width
+                                                                                   height:texture.height
+                                                                                mipmapped:NO];
+    id<MTLTexture> copy = [self.device newTextureWithDescriptor:desc];
+    if (!copy) return;
+
+    id<MTLCommandBuffer> cb = [_commandQueue commandBuffer];
+    id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    [blit copyFromTexture:texture toTexture:copy];
+    [blit endEncoding];
+
+    __block id<MTLTexture> blockCopy = copy;
+    [cb addCompletedHandler:^(id<MTLCommandBuffer> buf) {
+        // Create bitmap
+        NSInteger width = blockCopy.width;
+        NSInteger height = blockCopy.height;
+        NSMutableData* data = [NSMutableData dataWithLength:width * height * 4];
+        
+        [blockCopy getBytes:data.mutableBytes
+               bytesPerRow:width * 4
+                fromRegion:MTLRegionMake2D(0, 0, width, height)
+               mipmapLevel:0];
+
+        NSBitmapImageRep* rep = [[NSBitmapImageRep alloc]
+            initWithBitmapDataPlanes:NULL
+                          pixelsWide:width
+                          pixelsHigh:height
+                       bitsPerSample:8
+                     samplesPerPixel:4
+                            hasAlpha:YES
+                            isPlanar:NO
+                      colorSpaceName:NSCalibratedRGBColorSpace
+                         bytesPerRow:width * 4
+                        bitsPerPixel:32];
+        memcpy([rep bitmapData], data.bytes, width * height * 4);
+
+        NSData* png = [rep representationUsingType:NSPNGFileType properties:@{}];
+        NSString* path = [NSString stringWithFormat:@"%%@/Desktop/m1switch_%%@.png",
+                         NSHomeDirectory(),
+                         [NSDateFormatter localizedStringFromDate:[NSDate date]
+                                                        dateStyle:NSDateFormatterNoStyle
+                                                        timeStyle:NSDateFormatterMediumStyle]];
+        [png writeToFile:path atomically:YES];
+        LOG_INFO("Screenshot saved: %%s", [path UTF8String]);
+        [blockCopy release];
+    }];
+    [cb commit];
+    [copy release];
+}
+
 - (BOOL)acceptsFirstResponder { return YES; }
 
 @end

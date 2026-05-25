@@ -33,9 +33,16 @@ public:
                       const char* func, const char* fmt, ...)
         __attribute__((format(printf, 5, 6)));
 
+    // ── Log listener (for UI panel) ─────────────────────
+    // Called for every log message after writing to stderr.
+    using LogCallback = void(*)(LogLevel level, const char* msg, int len, void* user);
+    static void SetCallback(LogCallback cb, void* user);
+
 private:
     static std::mutex s_mutex;
     static LogLevel s_level;
+    static LogCallback s_callback;
+    static void* s_callback_user;
 
     static const char* LevelString(LogLevel level);
     static std::string_view Basename(std::string_view path);

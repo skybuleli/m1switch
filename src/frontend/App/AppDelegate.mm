@@ -1,4 +1,5 @@
 #import "AppDelegate.h"
+#import "frontend/GameView/LogPanelView.h"
 #import "frontend/GameView/EmuScreenView.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -183,11 +184,21 @@
     _gameWindow.title = [path lastPathComponent];
     _gameWindow.minSize = NSMakeSize(320, 240);
 
-    // Create EmuScreenView as the content view
-    EmuScreenView* screenView = [[EmuScreenView alloc]
-        initWithFrame:NSMakeRect(0, 0, 1280, 720)];
-    _gameWindow.contentView = screenView;
+    // Create split view: EmuScreenView (top) + LogPanelView (bottom)
+    NSSplitView* splitView = [[NSSplitView alloc] initWithFrame:NSZeroRect];
+    splitView.vertical = NO;
+    splitView.dividerStyle = NSSplitViewDividerStyleThin;
+    splitView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
+    EmuScreenView* screenView = [[EmuScreenView alloc]
+        initWithFrame:NSMakeRect(0, 0, 1280, 540) memory:nil];
+    LogPanelView* logPanel = [[LogPanelView alloc] initWithFrame:NSMakeRect(0, 0, 1280, 180)];
+
+    [splitView addSubview:screenView];
+    [splitView addSubview:logPanel];
+    [splitView adjustSubviews];
+
+    _gameWindow.contentView = splitView;
     _gameWindow.delegate = self;
 
     [_gameWindow center];

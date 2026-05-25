@@ -7,6 +7,8 @@
 
 std::mutex Log::s_mutex;
 LogLevel Log::s_level = LogLevel::Debug;
+Log::LogCallback Log::s_callback = nullptr;
+void* Log::s_callback_user = nullptr;
 
 void Log::Init() {
     // Phase 0: simple stderr logging
@@ -21,6 +23,11 @@ void Log::Shutdown() {
 
 void Log::SetLevel(LogLevel level) {
     s_level = level;
+}
+
+void Log::SetCallback(LogCallback cb, void* user) {
+    s_callback = cb;
+    s_callback_user = user;
 }
 
 LogLevel Log::GetLevel() {
@@ -85,6 +92,11 @@ void Log::Write(LogLevel level, const char* file, int line,
             static_cast<unsigned>(tid),
             Basename(file).data(), line, func,
             msg_len, msg_buf);
+
+    // Notify UI callback
+    if (s_callback) {
+        s_callback(level, msg_buf, msg_len, s_callback_user);
+    }
 
     if (level == LogLevel::Fatal) {
         fprintf(stderr, "FATAL: aborting...\n");
