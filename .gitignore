@@ -1,0 +1,35 @@
+# Build
+build/
+cmake-build-*/
+out/
+
+# IDE
+.xcode/
+*.xcodeproj/
+*.xcworkspace/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+*.dSYM/
+*.app/
+
+# Dependencies (managed via CMake FetchContent or submodules)
+third_party/*/build/
+
+# Runtime data
+*.log
+/config.json
+
+# Testing
+tests/fixtures/keys/*
+tests/fixtures/roms/*
+!tests/fixtures/keys/.gitkeep
+!tests/fixtures/roms/.gitkeep
+
+# Generated
+*.generated.h
