@@ -165,7 +165,13 @@ set_target_properties(m1switch PROPERTIES
 option(M1SWITCH_BUILD_TESTS "Build test targets" ON)
 if(M1SWITCH_BUILD_TESTS)
     enable_testing()
+    add_subdirectory(src)
     add_subdirectory(tests)
+endif()
+
+# ── Headless runner ──────────────────────────────────────────
+if(NOT M1SWITCH_BUILD_TESTS)
+    add_subdirectory(src)
 endif()
 
 # ── Install ──────────────────────────────────────────────────
