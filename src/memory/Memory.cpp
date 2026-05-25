@@ -105,6 +105,15 @@ Result Memory::UnmapPhysical(u64 address, size_t size) {
     return Result::Success;
 }
 
+Result Memory::Protect(u64 address, size_t size, Permission perm) {
+    mach_vm_address_t abs_addr = base_addr_ + address;
+    int prot = mach_vm_prot_from_perm(perm);
+    kern_return_t kr = mach_vm_protect(mach_task_self(), abs_addr, size, false, prot);
+    if (kr != KERN_SUCCESS)
+        return Result::InvalidArgument;
+    return Result::Success;
+}
+
 // ── Heap ────────────────────────────────────────────────────
 Result Memory::SetHeapSize(u64 size) {
     u64 aligned = AlignUp(static_cast<u64>(size), PAGE_SIZE);

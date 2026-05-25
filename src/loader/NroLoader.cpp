@@ -1,4 +1,5 @@
 #include "loader/NroLoader.h"
+#include "cpu/NativeExec.h"
 
 #include <cstring>
 #include <fstream>
@@ -154,13 +155,26 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
     // ── Map segments ────────────────────────────────────
     u64 addr = NRO_TEXT_BASE;
 
-    // .text → RX
+    // .text → RW first, then patch, then switch to RX
     {
         u64 size_aligned = AlignUp<u64>(text_size, 0x1000);
+        // Map as RW first so we can patch SVCs
         Result r = memory_.MapPhysical(addr, size_aligned,
-                                        Memory::Permission::RX,
+                                        Memory::Permission::RW,
                                         buffer.data() + text_file_off);
         if (Failed(r)) return r;
+
+        // Patch SVCs → BRK while memory is still writable
+        u8* text_ptr = memory_.Pointer(addr);
+        if (text_ptr) {
+            std::vector<std::pair<u32, u32>> svc_map;
+            NativeExec::PatchSVCs(text_ptr, text_size, svc_map);
+            LOG_INFO("Patched %zu SVCs in .text", svc_map.size());
+        }
+
+        // Now switch to RX (read-execute)
+        memory_.Protect(addr, size_aligned, Memory::Permission::RX);
+
         info.segments.push_back(
             {text_start, text_size, addr, Memory::Permission::RX});
         addr += size_aligned;

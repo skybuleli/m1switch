@@ -31,6 +31,7 @@ public:
     Result MapPhysical(u64 address, size_t size, Permission perm,
                        const void* data = nullptr);
     Result UnmapPhysical(u64 address, size_t size);
+    Result Protect(u64 address, size_t size, Permission perm);
 
     Result SetHeapSize(u64 size);
     u64    GetHeapSize() const { return heap_size_; }
