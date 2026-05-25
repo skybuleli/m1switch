@@ -173,6 +173,17 @@
     [panel beginSheetModalForWindow:_libraryWindow
                   completionHandler:^(NSModalResponse r) {
         if (r == NSModalResponseOK) [self openGameAtPath:panel.URL.path];
+    // Connect sidebar search to grid filtering
+    _sideView.onFilterChanged = ^(const std::vector<const GameEntry*>* results) {
+        AppDelegate* strongSelf = (AppDelegate*)[NSApp delegate];
+        if (results) {
+            std::vector<const GameEntry*> copy = *results;
+            [strongSelf.gridView setFilter:&copy];
+        } else {
+            [strongSelf.gridView clearFilter];
+        }
+    };
+
     }];
 }
 
