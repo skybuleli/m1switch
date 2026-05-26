@@ -68,12 +68,16 @@ public:
     // 按 session ID 查找服务
     ServiceBase* GetServiceBySession(u32 session_id);
 
+    // 关闭 session，释放其服务和 domain_objects
+    void CloseSession(u32 session_id);
+
 private:
     struct Session {
         u32 id;
         std::string service_name;
         ServiceBase* service = nullptr;
         bool is_domain = false; // 是否已转为 domain 模式
+        bool owns_service = false; // 是否拥有 service 指针（需在关闭时 delete）
         u32 next_object_id = 1; // 域模式下下一个对象 ID（递增分配）
         std::unordered_map<u32, ServiceBase*> domain_objects; // object_id → sub-service
     };

@@ -176,9 +176,30 @@ u32 IpcManager::CreateSession(ServiceBase* service) {
     s.id = sid;
     s.service_name = "(anonymous)";
     s.service = service;
+    s.owns_service = true; // CreateSession 创建的子服务，关闭时由 IpcManager delete
     sessions_.push_back(s);
     LOG_DEBUG("IPC: CreateSession → session 0x%x (anonymous, svc=%p)", sid, (void*)service);
     return sid;
+}
+
+void IpcManager::CloseSession(u32 session_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto it = sessions_.begin(); it != sessions_.end(); ++it) {
+        if (it->id == session_id) {
+            // domain_objects 中的服务由各自 session 拥有，不在此删除
+            // （它们通过 owns_service 在各自 session 关闭时释放）
+            it->domain_objects.clear();
+            // 释放自己的 service
+            if (it->owns_service && it->service) {
+                LOG_DEBUG("IPC: deleting service %p for session 0x%x",
+                          (void*)it->service, session_id);
+                delete it->service;
+            }
+            sessions_.erase(it);
+            LOG_DEBUG("IPC: closed session 0x%x", session_id);
+            return;
+        }
+    }
 }
 
 // 服务 Helper：创建并返回子会话句柄（用于 OpenSession 等服务）
@@ -258,6 +279,17 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         LOG_DEBUG("IPC: detected recycled response buffer, resetting request");
         req_hdr = {};
         dw_off = sizeof(HipcHeader);
+    }
+
+    // ── 处理 Close 命令（type=2）─ 关闭 session 释放内存 ────
+    if (req_hdr.type == 2 && session) {
+        LOG_DEBUG("IPC: Close session 0x%x", session_handle);
+        CloseSession(session_handle);
+        // 返回空 HipcHeader 表示确认
+        HipcHeader close_resp = {};
+        std::memcpy(response, &close_resp, sizeof(close_resp));
+        *resp_size = sizeof(HipcHeader);
+        return 0;
     }
 
     // ── 解析 recv_list（输出缓冲描述符）───────────────
