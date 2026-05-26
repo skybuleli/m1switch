@@ -6,17 +6,27 @@
 - (instancetype)initWithNibName:(NSNibName)nibNameOrNil
                          bundle:(NSBundle*)nibBundleOrNil {
     self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil];
-    if (self) [self setup];
     return self;
 }
 
 - (instancetype)initWithCoder:(NSCoder*)coder {
     self = [super initWithCoder:coder];
-    if (self) [self setup];
     return self;
 }
 
+// Code-only collection view item: create a plain view
+- (void)loadView {
+    self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 160, 224)];
+    [self setup];
+}
+
 - (void)setup {
+    // Ensure view exists (NSCollectionViewItem might not have loaded it yet)
+    if (!self.view) {
+        LOG_WARN("GameCell: view is nil in setup, deferring to loadView");
+        return;
+    }
+
     // ── Cover image ────────────────────────────────────
     _coverView = [[NSImageView alloc] initWithFrame:NSZeroRect];
     _coverView.imageScaling = NSImageScaleProportionallyUpOrDown;

@@ -1,15 +1,17 @@
 #import "EmuScreenView.h"
 #include "common/Log.h"
 #include "services/Nv.h"
-#include "loader/NroLoader.h"
-#include "cpu/NativeExec.h"
-#include "cpu/ExceptionHandler.h"
-#include "kernel/SvcTable.h"
+#include "gpu/shader/ShaderManager.h"
+#include <cstring>
 
+extern "C" {
+void Input_Poll(void);
+void Input_WriteToHidSharedMemory(u8* mem, u64 size);
+}
 
 @implementation EmuScreenView
 
-- (instancetype)initWithFrame:(CGRect)frame memory:(Memory*)mem {
+- (instancetype)initWithFrame:(CGRect)frame core:(EmulatorCore*)core {
     id<MTLDevice> mtlDev = MTLCreateSystemDefaultDevice();
     if (!mtlDev) { LOG_FATAL("Metal not supported"); return nil; }
 
@@ -17,8 +19,7 @@
     if (!self) return nil;
 
     _commandQueue = [mtlDev newCommandQueue];
-    // Create Memory if not provided
-    _memory = mem ? mem : new Memory();
+    _core = core;
 
     self.delegate = self;
     self.colorPixelFormat = MTLPixelFormatBGRA8Unorm_sRGB;
@@ -31,38 +32,71 @@
     metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm_sRGB;
     metalLayer.maximumDrawableCount = 3;
 
-    // Create shared StateTracker and wire everything
-    _tracker = new StateTracker();
-    _tracker->SetMemory(mem);
-
-    // Connect MetalRenderer to the shared tracker
     _dev = new MetalDevice();
     _rnd = new MetalRenderer(*_dev);
-    _rnd->SetStateTracker(_tracker);
+    _rnd->SetStateTracker(&core->GetTracker());
     _rnd->Initialize();
-    _rnd->SetTestTriangle();  // fallback when no GPU state
+    _rnd->SetTestTriangle();
 
-    // Connect NV service GPFifo to the shared tracker
-    ServiceNv_SetGpuFifo(&_tracker->GetGPFifo());
-    ServiceNv_SetTracker(_tracker);
-    ServiceNv_SetMemory(mem);
+    _shaderMgr = new ShaderManager(*_dev);
+    _shaderMgr->Initialize();
+    _rnd->SetShaderManager(_shaderMgr);
 
-    LOG_INFO("EmuScreenView ready with wired StateTracker");
+    _texCache = new TextureCache(_dev->Device());
+    _rnd->SetTextureCache(_texCache);
+
+    LOG_INFO("EmuScreenView ready with EmulatorCore + ShaderManager + TextureCache");
     return self;
 }
 
 - (void)dealloc {
+    delete _texCache;
+    delete _shaderMgr;
     delete _rnd;
     delete _dev;
-    delete _tracker;
-    // Memory freed by whoever created it (or leaked if we created it)
     [super dealloc];
 }
 
 - (void)drawInMTKView:(MTKView*)view {
     id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
     MTLRenderPassDescriptor* desc = view.currentRenderPassDescriptor;
-    if (desc && _rnd) _rnd->RenderFrame(cmdBuf, desc);
+    if (desc && _rnd) {
+        // ── Check for VI framebuffer data from guest ─────
+        // VI allocates its framebuffer at guest address 0xE0000000 (1280x720 BGRA8).
+        // If the game writes there, we blit it to screen when no 3D draws are active.
+        if (_core) {
+            Memory& mem = _core->GetMemory();
+            static constexpr u64 VI_FB_ADDR = 0xE0000000;
+            static constexpr u32 VI_FB_WIDTH = 1280;
+            static constexpr u32 VI_FB_HEIGHT = 720;
+            static constexpr u32 VI_FB_STRIDE = 1280 * 4;
+
+            u8* fb_ptr = mem.Pointer(VI_FB_ADDR);
+            if (fb_ptr) {
+                // Check if the framebuffer has been written to (non-zero first pixel)
+                // by looking at the header marker set by ViService
+                u32 marker;
+                std::memcpy(&marker, fb_ptr, 4);
+                if (marker != 0) {
+                    _rnd->SetFramebufferSource(fb_ptr, VI_FB_WIDTH, VI_FB_HEIGHT,
+                                                VI_FB_STRIDE, 4);
+                }
+            }
+        }
+
+        _rnd->RenderFrame(cmdBuf, desc);
+    }
+
+    // ── Poll input every frame ──────────────────────────
+    if (_core) {
+        Input_Poll();
+        Memory& mem = _core->GetMemory();
+        static constexpr u64 HID_SHARED_MEM = 0xE1000000;
+        static constexpr u64 HID_SHARED_SIZE = 0x40000;
+        u8* hid_ptr = mem.Pointer(HID_SHARED_MEM);
+        if (hid_ptr) Input_WriteToHidSharedMemory(hid_ptr, HID_SHARED_SIZE);
+    }
+
     if (view.currentDrawable) [cmdBuf presentDrawable:view.currentDrawable];
     [cmdBuf commit];
 }
@@ -72,48 +106,13 @@
 }
 
 
-// ── Load NRO and start emulation ────────────────────────────
 - (void)loadAndRunNRO:(const char*)path {
     LOG_INFO("EmuScreenView: loading %s", path);
 
-    NroLoader loader(*_memory);
-    NroLoadInfo info;
-    Result r = loader.LoadFromFile(path, info);
-    if (Failed(r)) { LOG_ERROR("Failed to load NRO"); return; }
+    Result r = _core->LoadGame(path);
+    if (Failed(r)) { LOG_ERROR("Failed to load game"); return; }
 
-    if (info.segments.empty()) { LOG_ERROR("NRO has no segments"); return; }
-
-    auto& seg = info.segments[0];
-    u8* text = _memory->Pointer(seg.guest_address);
-    if (!text) { LOG_ERROR("Bad text pointer"); return; }
-
-    std::vector<std::pair<u32, u32>> svc_map;
-    NativeExec::PatchSVCs(text, seg.size, svc_map);
-    LOG_INFO("Patched %zu SVCs, entry=0x%llx", svc_map.size(), info.entry_point);
-
-    _memory->SetupStack(0x100000);
-    SvcTable_Init();
-
-    // Set up NV service wiring
-    ServiceNv_SetMemory(_memory);
-    ServiceNv_SetGpuFifo(&_tracker->GetGPFifo());
-    ServiceNv_SetTracker(_tracker);
-    _tracker->SetMemory(_memory);
-
-    // Install SIGTRAP handler for SVC dispatch
-    SigHandler sig_handler;
-    sig_handler.SetSvcDispatch([](u32 svc, GuestThreadState* st) {
-        SvcHandler_Dispatch(svc, st);
-    });
-    sig_handler.Install();
-
-    LOG_INFO("Starting guest: PC=0x%llx, SP=0x%llx",
-             _memory->BaseAddress() + info.entry_point,
-             _memory->BaseAddress() + _memory->GetStackTop());
-
-    NativeExec::RunGuest(
-        _memory->BaseAddress() + info.entry_point,
-        _memory->BaseAddress() + _memory->GetStackTop(), 0);
+    _core->Run();
 }
 
 - (void)toggleFullscreen {
@@ -122,7 +121,6 @@
 }
 
 - (void)captureScreenshot:(id)sender {
-    // Capture current Metal drawable and save to desktop
     id<MTLTexture> texture = self.currentDrawable.texture;
     if (!texture) return;
 
@@ -140,7 +138,6 @@
 
     __block id<MTLTexture> blockCopy = copy;
     [cb addCompletedHandler:^(id<MTLCommandBuffer> buf) {
-        // Create bitmap
         NSInteger width = blockCopy.width;
         NSInteger height = blockCopy.height;
         NSMutableData* data = [NSMutableData dataWithLength:width * height * 4];

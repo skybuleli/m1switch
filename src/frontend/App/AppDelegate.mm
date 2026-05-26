@@ -5,6 +5,8 @@
 #import "frontend/Library/GameScanner.h"
 #import "frontend/Library/LibraryGrid.h"
 #import "frontend/Library/LibrarySidebar.h"
+#import "frontend/Settings/SettingsController.h"
+#import "frontend/Debug/DebugPanelController.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -14,6 +16,9 @@
 @interface AppDelegate () {
     GameLibrary _gameLib;
     GameScanner _scanner;
+    EmulatorCore _core;
+    SettingsController* _settingsController;
+    DebugPanelController* _debugController;
 }
 @property (nonatomic, strong) LibraryGrid* gridView;
 @property (nonatomic, strong) LibrarySidebar* sideView;
@@ -21,16 +26,35 @@
 
 @implementation AppDelegate
 
+- (EmulatorCore*)core { return &_core; }
+
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     LOG_INFO("Application did finish launching");
-    Config::Instance().Load();
-    [self createLibraryWindow];
-    [self setupMainMenu];
+
+    // Wrap initialization in ObjC exception handler to prevent
+    // C++/ObjC exception cross-contamination in the event loop.
+    @try {
+        Config::Instance().Load();
+        _core.Initialize();
+    } @catch (NSException* e) {
+        LOG_ERROR("Init exception: %s reason: %s",
+                  [[e name] UTF8String], [[e reason] UTF8String]);
+    } @catch (...) {
+        LOG_ERROR("Init: unknown C++ exception");
+    }
+
+    @try {
+        [self createLibraryWindow];
+        [self setupMainMenu];
+    } @catch (NSException* e) {
+        LOG_ERROR("Window/menu exception: %s reason: %s",
+                  [[e name] UTF8String], [[e reason] UTF8String]);
+    }
 }
 
 - (void)applicationWillTerminate:(NSNotification*)notification {
+    _core.Stop();
     Config::Instance().Save();
-    // Save library
     const char* home = getenv("HOME");
     if (home) {
         _gameLib.Save(std::string(home) + "/Library/Application Support/m1switch/library.json");
@@ -41,7 +65,6 @@
     return YES;
 }
 
-// ── Library Window ──────────────────────────────────────────
 - (void)createLibraryWindow {
     NSRect frame = NSMakeRect(0, 0, 960, 640);
     _libraryWindow = [[NSWindow alloc]
@@ -54,7 +77,6 @@
 
     NSView* cv = _libraryWindow.contentView;
 
-    // Load or scan library
     const char* home = getenv("HOME");
     std::string libPath;
     if (home) {
@@ -63,7 +85,6 @@
     }
 
     if (_gameLib.GetAll().empty()) {
-        // Scan default directories
         std::vector<std::string> dirs;
         if (home) dirs.push_back(std::string(home) + "/Downloads");
         _scanner.ScanDirectories(dirs, _gameLib);
@@ -71,7 +92,6 @@
         if (!libPath.empty()) _gameLib.Save(libPath);
     }
 
-    // Split: sidebar (left) + grid (right)
     NSSplitView* sv = [[NSSplitView alloc] initWithFrame:NSZeroRect];
     sv.vertical = YES;
     sv.dividerStyle = NSSplitViewDividerStyleThin;
@@ -101,7 +121,6 @@
     LOG_INFO("Library ready: %zu games", _gameLib.GetAll().size());
 }
 
-// ── Game Window ─────────────────────────────────────────────
 - (void)openGameAtPath:(NSString*)path {
     LOG_INFO("Open: %s", [path UTF8String]);
     if (_gameWindow) { [_gameWindow close]; _gameWindow = nil; }
@@ -120,7 +139,7 @@
     split.dividerStyle = NSSplitViewDividerStyleThin;
     split.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
-    EmuScreenView* screen = [[EmuScreenView alloc] initWithFrame:NSMakeRect(0, 0, 1280, 540) memory:nil];
+    EmuScreenView* screen = [[EmuScreenView alloc] initWithFrame:NSMakeRect(0, 0, 1280, 540) core:&_core];
     LogPanelView* log = [[LogPanelView alloc] initWithFrame:NSMakeRect(0, 0, 1280, 180)];
 
     [split addSubview:screen];
@@ -135,9 +154,22 @@
     });
 }
 
-- (void)showSettings { TODO("Settings"); }
+- (void)showSettings {
+    if (!_settingsController) {
+        _settingsController = [[SettingsController alloc] init];
+    }
+    [_settingsController showWindow:nil];
+    [[_settingsController window] makeKeyAndOrderFront:nil];
+}
 
-// ── Menu ────────────────────────────────────────────────────
+- (void)showDebug {
+    if (!_debugController) {
+        _debugController = [[DebugPanelController alloc] init];
+    }
+    [_debugController showWindow:nil];
+    [[_debugController window] makeKeyAndOrderFront:nil];
+}
+
 - (void)setupMainMenu {
     NSMenu* main = [[NSMenu alloc] init];
 
@@ -160,6 +192,14 @@
     [fileM addItemWithTitle:@"Close" action:@selector(performClose:) keyEquivalent:@"w"];
     fileItem.submenu = fileM;
 
+    NSMenuItem* debugItem = [[NSMenuItem alloc] init];
+    debugItem.title = @"Debug";
+    [main addItem:debugItem];
+    NSMenu* debugM = [[NSMenu alloc] init];
+    [debugM addItemWithTitle:@"Debug Panel" action:@selector(showDebug) keyEquivalent:@"d"];
+    [debugM addItemWithTitle:@"Settings" action:@selector(showSettings) keyEquivalent:@","];
+    debugItem.submenu = debugM;
+
     [NSApp setMainMenu:main];
 }
 
@@ -173,17 +213,6 @@
     [panel beginSheetModalForWindow:_libraryWindow
                   completionHandler:^(NSModalResponse r) {
         if (r == NSModalResponseOK) [self openGameAtPath:panel.URL.path];
-    // Connect sidebar search to grid filtering
-    _sideView.onFilterChanged = ^(const std::vector<const GameEntry*>* results) {
-        AppDelegate* strongSelf = (AppDelegate*)[NSApp delegate];
-        if (results) {
-            std::vector<const GameEntry*> copy = *results;
-            [strongSelf.gridView setFilter:&copy];
-        } else {
-            [strongSelf.gridView clearFilter];
-        }
-    };
-
     }];
 }
 

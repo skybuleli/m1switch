@@ -7,22 +7,24 @@
 #include "gpu/backend/MetalDevice.h"
 #include "gpu/backend/MetalRenderer.h"
 #include "gpu/StateTracker.h"
-#include "memory/Memory.h"
+#include "gpu/texture/TextureCache.h"
+#include "core/Core.h"
 
-// ── MTKView subclass for game rendering ─────────────────────
+class ShaderManager;
+
 @interface EmuScreenView : MTKView <MTKViewDelegate> {
 @private
     MetalDevice* _dev;
     MetalRenderer* _rnd;
-    StateTracker* _tracker;
-    Memory* _memory;
+    ShaderManager* _shaderMgr;
+    TextureCache* _texCache;
+    EmulatorCore* _core;
 }
 
 @property (nonatomic, readonly) id<MTLCommandQueue> commandQueue;
-@property (nonatomic, readonly) StateTracker* tracker;
-@property (nonatomic, readonly) Memory* memory;
+@property (nonatomic, readonly) EmulatorCore* core;
 
-- (instancetype)initWithFrame:(CGRect)frame memory:(Memory*)mem;
+- (instancetype)initWithFrame:(CGRect)frame core:(EmulatorCore*)core;
 - (void)toggleFullscreen;
 
 - (void)loadAndRunNRO:(const char*)path;
