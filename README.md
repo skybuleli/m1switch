@@ -101,7 +101,10 @@ cmake --build build
 **P1** — Rendering & Services (In Progress)
 - [x] P1 #1: VI BufferQueue 双缓冲帧交换 (DequeueBuffer/QueueBuffer/AcquireBuffer/ReleaseBuffer + 三缓冲)
 - [x] P1 #2: HID Npad 共享内存布局 (按键/摇杆状态, BufferQueue 生产者/消费者模型)
-- [ ] P1 #3: NvMap NvHost 完整实现 (GPU 地址空间映射, buffer 分配提交)
+- [x] P1 #2: HID Npad 共享内存布局 (按键/摇杆状态, BufferQueue 生产者/消费者模型)
+- [x] P1 #3: NvMap 完整实现 (Create/Alloc/Free/Param/GetId/GetHandle/CacheOp, 客户机堆分配 + IOVA 映射)
+- [x] P1 #3: NvHost-Ctrl 同步点 (SyncptAlloc/SyncptWait/SyncptRead/EventSignal)
+- [x] P1 #3: NvGpu 完善 (GetParam ZCULL/ROP, SetUserData, SetGpfifoEntry, fence 返回)
 - [ ] P1 #4: Fs 服务补全 (目录遍历, 文件属性, SaveData)
 
 **Phase 3** — Services & IPC (Complete)
