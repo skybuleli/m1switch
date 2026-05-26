@@ -10,9 +10,9 @@
 
 // ── Nintendo Switch IPC (tipc/cmif) Framework ──────────────
 
-// CMIF request header
+// CMIF request header — real Horizon OS magic: "SFCI" (0x49434653)
 struct IpcRequest {
-    u32 magic;       // 0x4942434F ("IBCF")
+    u32 magic;       // 0x49434653 ("SFCI" in BE, "ICFS" in memory)
     u32 cmd_id;      // Command ID
     u32 pad0;
     u32 pad1;
@@ -21,9 +21,9 @@ struct IpcRequest {
     u32 move_handles;
 };
 
-// CMIF response header
+// CMIF response header — real Horizon OS magic: "SFCO" (0x4F434653)
 struct IpcResponse {
-    u32 magic;       // 0x4942434F ("OCBI")
+    u32 magic;       // 0x4F434653 ("SFCO" in BE, "OCFS" in memory)
     u32 result;      // 0 = success
     u32 pad0;
     u32 pad1;

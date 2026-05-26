@@ -493,14 +493,14 @@ SVC(SvcSendSyncRequest) {
         return;
     }
 
-    u64 tls_base = GetEffectiveTlsBase();
-    u64 ipc_addr = tls_base + TLS_IPC_OFFSET;
+    // guest 通过 `mrs x0, tpidrro_el0` 获取 TLS 指针，写入主机 TLS 中。
+    // IPC 数据实际在主机 tpidrro_el0 + 0x100 处，而非我们的模拟 TLS。
+    u64 host_tls;
+    __asm__ volatile("mrs %0, tpidrro_el0" : "=r"(host_tls));
+
     u8 ipc_buf[TLS_IPC_SIZE];
     std::memset(ipc_buf, 0, TLS_IPC_SIZE);
-
-    for (u64 i = 0; i < TLS_IPC_SIZE; i++) {
-        g_mem->Read(ipc_addr + i, &ipc_buf[i]);
-    }
+    std::memcpy(ipc_buf, reinterpret_cast<const void*>(host_tls + TLS_IPC_OFFSET), TLS_IPC_SIZE);
 
     u8 resp_buf[TLS_IPC_SIZE];
     std::memset(resp_buf, 0, TLS_IPC_SIZE);
@@ -510,9 +510,7 @@ SVC(SvcSendSyncRequest) {
         session, ipc_buf, TLS_IPC_SIZE, resp_buf, &resp_size);
 
     size_t write_size = (resp_size < TLS_IPC_SIZE) ? resp_size : TLS_IPC_SIZE;
-    for (size_t i = 0; i < write_size; i++) {
-        g_mem->Write(ipc_addr + i, resp_buf[i]);
-    }
+    std::memcpy(reinterpret_cast<void*>(host_tls + TLS_IPC_OFFSET), resp_buf, write_size);
 
     Ret(state, result);
 }

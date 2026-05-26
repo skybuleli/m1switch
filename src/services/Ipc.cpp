@@ -69,7 +69,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // Build response
     IpcResponse* resp = reinterpret_cast<IpcResponse*>(response);
     memset(resp, 0, sizeof(IpcResponse));
-    resp->magic = 0x4942434F;  // "OCBI" in LE
+    resp->magic = 0x4F434653;  // "SFCO" in LE
     resp->result = 0;
 
     // Save total buffer size before overwriting
