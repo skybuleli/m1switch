@@ -13,7 +13,7 @@
 std::atomic<bool> g_guest_exited{false};
 std::atomic<bool> g_guest_crashed{false};
 
-static Memory* g_mem = nullptr;
+Memory* g_mem = nullptr;
 void SvcHandlers_SetMemory(Memory* mem) { g_mem = mem; }
 
 static u64 g_tls_base = 0;

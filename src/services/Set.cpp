@@ -6,53 +6,78 @@
 // ── SET (System Settings) Service ───────────────────────────
 // Returns system language, timezone, etc.
 
+static u64 GetLangCodeEnUs() { return 0x00000053552D6E65ULL; } // "en-US"
+
+// set:sys GetFirmwareVersion 响应结构
+struct NX_FirmwareVersion {
+    u8 major, minor, micro, pad1;
+    u8 rev_major, rev_minor, pad2, pad3;
+    char platform[0x20];
+    char version_hash[0x40];
+    char display_version[0x18];
+    char display_title[0x80];
+};
+
 class SetService : public ServiceBase {
+    bool is_sys_;
 public:
-    SetService() {
+    SetService() : is_sys_(false) {
         IpcManager::Instance().RegisterService("set:", this);
+    }
+    explicit SetService(bool is_sys) : is_sys_(true) {
         IpcManager::Instance().RegisterService("set:sys", this);
     }
-    const char* Name() const override { return "set:"; }
+    const char* Name() const override { return is_sys_ ? "set:sys" : "set:"; }
 
     bool HandleCommand(u32 cmd_id, const u8* in, size_t in_sz,
                        u8* out, size_t* out_sz) override {
+        if (is_sys_) return HandleSys(cmd_id, in, in_sz, out, out_sz);
+        else         return HandleStd(cmd_id, in, in_sz, out, out_sz);
+    }
+
+    // "set:" — 标准设置服务
+    bool HandleStd(u32 cmd_id, const u8* in, size_t in_sz,
+                   u8* out, size_t* out_sz) {
         switch (cmd_id) {
-        case 0: // Initialize
-            *out_sz = 0; return true;
-        case 1: // GetAvailableLanguageCodes
+        case 0: // GetLanguageCode → u64 BCP-47
             if (*out_sz >= 8) {
-                // 返回 u64: 低32位=语言数量, 高32位=总大小
-                u64 result = (1ULL << 32) | 1; // 1 lang, total_size=1
-                std::memcpy(out, &result, 8);
-                *out_sz = 8;
-            }
-            return true;
-        case 2: // MakeLanguageCode
-            if (*out_sz >= 8) {
-                std::memset(out, 0, 8);
-                *out_sz = 8;
-            }
-            return true;
-        case 3: // GetLanguageCode — 返回 BCP-47 语言代码 "en-US"
-            if (*out_sz >= 8) {
-                // BCP-47 "en-US" = bytes: 'e','n','-','U','S',0,0,0
-                // LE u64 = 0x00000053552D6E65
-                u64 lang_en_us = 0x00000053552D6E65ULL;
-                std::memcpy(out, &lang_en_us, 8);
-                *out_sz = 8;
-            }
-            return true;
-        case 4: // GetRegionCode — 返回区域代码 (4=USA? or 0x100?)
+                u64 lang = GetLangCodeEnUs();
+                std::memcpy(out, &lang, 8); *out_sz = 8;
+            } return true;
+        case 4: // GetRegionCode → u32
             if (*out_sz >= 4) {
-                u32 region = 0x100; // USA (major=1, minor=0)
-                std::memcpy(out, &region, 4);
-                *out_sz = 4;
-            }
-            return true;
+                u32 region = 1; // USA
+                std::memcpy(out, &region, 4); *out_sz = 4;
+            } return true;
         default:
             LOG_TRACE("SET: unhandled cmd %u", cmd_id);
-            *out_sz = 0;
-            return true;
+            *out_sz = 0; return true;
+        }
+    }
+
+    // "set:sys" — 系统设置服务（命令 ID 完全不同！）
+    bool HandleSys(u32 cmd_id, const u8* in, size_t in_sz,
+                   u8* out, size_t* out_sz) {
+        switch (cmd_id) {
+        case 0: // SetLanguageCode (u64 input)
+        case 1: // SetNetworkSettings
+        case 2: // GetNetworkSettings
+            *out_sz = 0; return true;
+        case 3: // GetFirmwareVersion (old, <3.0.0)
+        case 4: // GetFirmwareVersion (new, >=3.0.0)
+            if (*out_sz >= sizeof(NX_FirmwareVersion)) {
+                auto* fw = reinterpret_cast<NX_FirmwareVersion*>(out);
+                memset(fw, 0, sizeof(*fw));
+                fw->major = 15; fw->minor = 0; fw->micro = 0;
+                strncpy(fw->platform, "NX", sizeof(fw->platform)-1);
+                strncpy(fw->display_version, "15.0.0", sizeof(fw->display_version)-1);
+                strncpy(fw->display_title, "NintendoSDK Firmware for NX 15.0.0",
+                        sizeof(fw->display_title)-1);
+                *out_sz = sizeof(*fw);
+            } return true;
+        default:
+            LOG_TRACE("SETSYS: unhandled cmd %u", cmd_id);
+            *out_sz = 0; return true;
         }
     }
 };
@@ -127,7 +152,8 @@ public:
 };
 
 // ── Global instances ────────────────────────────────────────
-static SetService  g_set_service;
+static SetService  g_set_service;       // registers "set:"
+static SetService  g_setsys_service(true); // registers "set:sys"
 static ApmService  g_apm_service;
 static TimeService g_time_service;
 

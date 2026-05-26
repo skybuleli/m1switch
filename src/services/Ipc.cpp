@@ -2,8 +2,12 @@
 #include "common/Log.h"
 #include "debug/TraceEngine.h"
 #include "kernel/Kernel.h"
+#include "memory/Memory.h"
 #include <cstring>
 #include <algorithm>
+
+// SvcHandlers.cpp 中的 guest 内存指针，用于 recv_list 缓冲写入
+extern Memory* g_mem;
 
 // ── hipc 协议结构（匹配 libnx 定义）─────────────────────
 struct __attribute__((packed)) HipcHeader {
@@ -27,6 +31,13 @@ struct __attribute__((packed)) HipcSpecialHeader {
     u32 padding          : 23;
 };
 static_assert(sizeof(HipcSpecialHeader) == 4, "HipcSpecialHeader must be 4 bytes");
+
+struct __attribute__((packed)) HipcRecvListEntry {
+    u32 address_low;
+    u32 address_high : 16;
+    u32 size         : 16;
+};
+static_assert(sizeof(HipcRecvListEntry) == 8, "HipcRecvListEntry must be 8 bytes");
 
 // 从 hipc 请求缓冲区中定位 data_words 的偏移
 static size_t CalcDataWordsOffset(const u8* data, size_t size) {
@@ -55,6 +66,51 @@ static size_t CalcDataWordsOffset(const u8* data, size_t size) {
     off += (hdr.num_send_buffers + hdr.num_recv_buffers + hdr.num_exch_buffers) * 16;
 
     return off < size ? off : 0;
+}
+
+// 解析 hipc 请求中的 recv_list（输出缓冲描述符）
+// recv_static_mode: 0=无, 2=自动, >2=条目数+2
+// recv_list 位于 data_words 之后（在请求缓冲的末尾）
+struct ParsedRecvList {
+    size_t count = 0;
+    struct Entry { u64 guest_addr; u32 size; } entries[8];
+};
+static ParsedRecvList ParseRecvList(const u8* data, const HipcHeader& hdr, size_t dw_off) {
+    ParsedRecvList result;
+    if (hdr.recv_static_mode == 0) return result;
+    
+    // 计算 recv_list 条目数量
+    size_t num_entries = 0;
+    if (hdr.recv_static_mode == 2) {
+        num_entries = 8; // 保守处理
+    } else if (hdr.recv_static_mode > 2) {
+        num_entries = hdr.recv_static_mode - 2;
+    }
+    if (num_entries == 0) return result;
+    
+    // recv_list 位于 data_words 之后
+    // recv_list_offset 是相对于 HipcHeader 的 u32 偏移
+    size_t rl_off = dw_off + hdr.num_data_words * sizeof(u32);
+    // 如果 recv_list_offset 在 header 中非零，使用它
+    if (hdr.recv_list_offset > 0) {
+        rl_off = hdr.recv_list_offset * sizeof(u32);
+    }
+    
+    // 解析 HipcRecvListEntry 数组
+    for (size_t i = 0; i < num_entries && i < 8; i++) {
+        HipcRecvListEntry entry;
+        std::memcpy(&entry, data + rl_off + i * sizeof(HipcRecvListEntry), sizeof(entry));
+        u32 raw_addr = entry.address_low;
+        // address_high 是 16 位，与 address_low 组合为 48 位地址
+        u64 addr = (u64)raw_addr | ((u64)entry.address_high << 32);
+        u32 size = entry.size;
+        if (size > 0) {
+            result.entries[result.count].guest_addr = addr;
+            result.entries[result.count].size = size;
+            result.count++;
+        }
+    }
+    return result;
 }
 
 IpcManager::IpcManager() {}
@@ -141,15 +197,33 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     size_t dw_off = CalcDataWordsOffset(data, size);
 
     // 检测请求是否被上一次响应污染（原地 IPC 缓冲复用）
+    bool recycled = false;
     if (req_hdr.has_special_header && size >= sizeof(HipcHeader) + 4) {
         HipcSpecialHeader sh;
         std::memcpy(&sh, data + sizeof(HipcHeader), sizeof(sh));
         if (sh.num_copy_handles > 0 || sh.num_move_handles > 0) {
-            LOG_DEBUG("IPC: detected recycled response buffer, resetting request");
-            req_hdr = {};
-            dw_off = sizeof(HipcHeader);
+            recycled = true;
         }
     }
+    // 检测 SFCO magic（CMIF 响应头）出现在 data_words 中，表明请求是上一轮响应
+    if (!recycled && req_hdr.num_data_words > 0) {
+        size_t check_off = CalcCmifAlign(dw_off);
+        if (check_off + 4 <= size) {
+            u32 magic = 0;
+            std::memcpy(&magic, data + check_off, sizeof(magic));
+            if (magic == CMIF_OUT_MAGIC) { // "SFCO" 出现在请求中 = 回收响应
+                recycled = true;
+            }
+        }
+    }
+    if (recycled) {
+        LOG_DEBUG("IPC: detected recycled response buffer, resetting request");
+        req_hdr = {};
+        dw_off = sizeof(HipcHeader);
+    }
+
+    // ── 解析 recv_list（输出缓冲描述符）───────────────
+    ParsedRecvList recv_list = ParseRecvList(data, req_hdr, dw_off);
 
     // ── CMIF 请求解析 ─────────────────────────────────
     // CmifInHeader 在 data_words 区域内 16 字节对齐
@@ -274,6 +348,31 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     }
 
     if (handled) {
+        // ── 写入 recv_list 输出缓冲 ──────────────────
+        // 如果请求中包含 recv_list（输出缓冲描述符），将服务响应数据写入其中
+        if (recv_list.count > 0 && raw_out_max > 0 && g_mem) {
+            // 只写入第一个 recv_list 条目（绝大多数情况只有一个输出缓冲）
+            u64 guest_addr = recv_list.entries[0].guest_addr;
+            u32 buf_size = recv_list.entries[0].size;
+            u32 write_size = std::min<u32>((u32)raw_out_max, buf_size);
+            
+            // 将 guest_addr 从 CPU 绝对地址转换为 guest 相对地址
+            u64 mem_base = g_mem->BaseAddress();
+            u64 rel_addr = guest_addr;
+            if (guest_addr >= mem_base && guest_addr < mem_base + Memory::ADDR_SPACE_SIZE) {
+                rel_addr = guest_addr - mem_base;
+            }
+            
+            // 逐字节写入 guest 内存
+            for (u32 i = 0; i < write_size; i++) {
+                g_mem->Write(rel_addr + i, raw_out[i]);
+            }
+            LOG_DEBUG("IPC: wrote %u bytes to recv_list buffer guest=0x%llx",
+                      write_size, guest_addr);
+            // 数据已写入缓冲 → 清除 inline 输出，响应只需 CMIF 头
+            raw_out_max = 0;
+        }
+
         // ── 构建 CMIF 响应 ──────────────────────────────
         // 在 raw_out 的基础上做 16 字节对齐，插入 CmifOutHeader
         size_t raw_off = (size_t)(raw_out - response);  // data_words 在 response 中的偏移
