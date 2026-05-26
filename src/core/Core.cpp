@@ -99,7 +99,7 @@ void EmulatorCore::InitServices() {
     ServiceAudioOut_Init();
     ServicePcv_Init();
 
-    LOG_INFO("Services initialized (%zu services)");
+    LOG_INFO("Services initialized");
 }
 
 void EmulatorCore::WireSvcDispatch() {
