@@ -33,16 +33,18 @@ public:
                 *out_sz = 8;
             }
             return true;
-        case 3: // GetLanguageCode
+        case 3: // GetLanguageCode — 返回 BCP-47 语言代码 "en-US"
             if (*out_sz >= 8) {
-                u64 lang = 0; // en-US = 0
-                std::memcpy(out, &lang, 8);
+                // BCP-47 "en-US" = bytes: 'e','n','-','U','S',0,0,0
+                // LE u64 = 0x00000053552D6E65
+                u64 lang_en_us = 0x00000053552D6E65ULL;
+                std::memcpy(out, &lang_en_us, 8);
                 *out_sz = 8;
             }
             return true;
-        case 4: // GetRegionCode
+        case 4: // GetRegionCode — 返回区域代码 (4=USA? or 0x100?)
             if (*out_sz >= 4) {
-                u32 region = 1; // USA region
+                u32 region = 0x100; // USA (major=1, minor=0)
                 std::memcpy(out, &region, 4);
                 *out_sz = 4;
             }
