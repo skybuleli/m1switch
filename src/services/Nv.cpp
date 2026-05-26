@@ -55,10 +55,12 @@ static std::unordered_map<u32, size_t> g_nvmap_handle_index;  // handle → inde
 static u32 g_nvmap_next_id = 1;
 static std::mutex g_nvmap_mutex;
 
-// GPU IOVA 分配器 (简单线性分配)
-static constexpr u64 GPU_IOVA_BASE = 0x80000000;  // GPU 地址空间起始
-static constexpr u64 GPU_IOVA_SIZE = 0x10000000;  // 256 MB GPU 地址空间
-static u64 g_next_iova = GPU_IOVA_BASE;
+// NvMap carveout 区域 — 独立于 guest 堆的专用内存池
+// 用于 GPU 内存分配。不碰 guest 堆，避免 SetHeapSize 清空堆数据的致命问题。
+// 区域选在 0xD0000000-0xDFFFFFFF (256 MB)，介于堆(0x80000000)和帧缓冲(0xE0000000)之间。
+static constexpr u64 NVMAP_CARVEOUT_BASE = 0xD0000000;
+static constexpr u64 NVMAP_CARVEOUT_SIZE = 0x10000000;  // 256 MB
+static u64 g_nvmap_carveout_offset = 0;
 
 // ── 同步点 ──────────────────────────────────────────────
 static std::atomic<u32> g_syncpt_counter{0};
@@ -284,21 +286,32 @@ private:
         entry.flags = flags;
         entry.cached = (kind == 0 || kind == 1);  // 0 = 系统不可缓存, 1 = 系统可缓存
 
-        // 在客户机内存中分配对齐的缓冲区, 并建立 GPU IOVA 映射
+        // 在 NvMap carveout 区域中分配对齐的缓冲区, 并建立 GPU IOVA 映射
+        // 注意: 使用专用 carveout 区域，不碰 guest 堆 (SetHeapSize 会 unmap+remap 清空堆数据)。
         if (entry.addr == 0 && g_nv_memory) {
-            u64 alloc_size = (entry.size + entry.align - 1) & ~(entry.align - 1);
-            u64 heap_base = Memory::HEAP_BASE;
+            u64 alloc_size = AlignUp(entry.size, entry.align != 0 ? entry.align : (u64)0x1000);
 
-            // 使用客户机堆分配内存
-            if (Failed(g_nv_memory->SetHeapSize(g_nv_memory->GetHeapSize() + alloc_size))) {
-                LOG_WARN("NVMAP: Alloc: 无法扩展堆 %llu 字节", alloc_size);
+            // 检查 carveout 空间
+            if (g_nvmap_carveout_offset + alloc_size > NVMAP_CARVEOUT_SIZE) {
+                LOG_WARN("NVMAP: Alloc: carveout 空间不足 (%llu + %llu > %llu)",
+                         g_nvmap_carveout_offset, alloc_size, NVMAP_CARVEOUT_SIZE);
             } else {
-                entry.addr = g_nv_memory->GetHeapBase() + g_nv_memory->GetHeapSize() - alloc_size;
-                entry.iova = entry.addr;  // 统一内存: IOVA = 物理地址
-                entry.mapped = true;
+                u64 alloc_addr = NVMAP_CARVEOUT_BASE + g_nvmap_carveout_offset;
 
-                LOG_INFO("NVMAP: Alloc handle=0x%08x size=%u align=%u → addr=0x%llx iova=0x%llx",
-                         handle, (u32)entry.size, (u32)entry.align, entry.addr, entry.iova);
+                // 直接映射到 carveout 区域
+                Result r = g_nv_memory->MapPhysical(alloc_addr, alloc_size, Memory::Permission::RW);
+                if (Failed(r)) {
+                    LOG_WARN("NVMAP: Alloc: 无法映射 carveout @ 0x%llx (%llu 字节): %d",
+                             alloc_addr, alloc_size, (int)r);
+                } else {
+                    entry.addr = alloc_addr;
+                    entry.iova = alloc_addr;  // 统一内存: IOVA = 物理地址
+                    entry.mapped = true;
+                    g_nvmap_carveout_offset += alloc_size;
+
+                    LOG_INFO("NVMAP: Alloc handle=0x%08x size=%u align=%u → addr=0x%llx iova=0x%llx (carveout)",
+                             handle, (u32)entry.size, (u32)entry.align, entry.addr, entry.iova);
+                }
             }
         }
 

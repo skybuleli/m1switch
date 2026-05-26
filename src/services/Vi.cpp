@@ -437,6 +437,38 @@ private:
 static ViService g_vi_service;
 
 void ServiceVi_Init() {
+    // 延迟映射帧缓冲 —— ViService 构造函数在静态初始化期间运行，
+    // 此时 g_vi_memory 为 null (Core::InitServices 在 main 中才设置)，
+    // 因此构造时的 MapPhysical 被跳过。此处由 SM 懒初始化调用，
+    // g_vi_memory 已确保可用。
+    if (g_vi_memory) {
+        g_vi_memory->MapPhysical(FB_ADDR, FB_SIZE, Memory::Permission::RW);
+        g_vi_memory->MapPhysical(FB_ADDR_DUAL, FB_SIZE, Memory::Permission::RW);
+
+        // 初始化为黑色
+        auto* ptr0 = g_vi_memory->Pointer(FB_ADDR);
+        auto* ptr1 = g_vi_memory->Pointer(FB_ADDR_DUAL);
+        if (ptr0) std::memset(ptr0, 0xFF, FB_SIZE);
+        if (ptr1) std::memset(ptr1, 0, FB_SIZE);
+
+        // 写入标记像素
+        u32 marker = 0xFF000000;
+        if (ptr0) std::memcpy(ptr0, &marker, 4);
+
+        LOG_INFO("VI: 帧缓冲映射完成 @ 0x%llx / 0x%llx (2x %zu KB)",
+                 FB_ADDR, FB_ADDR_DUAL, (size_t)(FB_SIZE / 1024));
+
+        // 初始化 BufferQueue 槽位地址
+        for (u32 i = 0; i < BufferQueue::NUM_SLOTS; i++) {
+            g_buffer_queue.slots[i].gpu_address = FB_ADDR + i * (FB_SIZE / 2);
+            if (g_buffer_queue.slots[i].state == BufferQueue::SLOT_FREE) {
+                // 只初始化空闲槽位的地址
+            }
+        }
+    } else {
+        LOG_WARN("VI: g_vi_memory 仍未设置，帧缓冲将不可用");
+    }
+
     LOG_INFO("VI 服务就绪 (BufferQueue 双缓冲)");
     (void)g_vi_service;
 }

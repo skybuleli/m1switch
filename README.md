@@ -110,6 +110,9 @@ cmake --build build
 - [x] P0 补: ViewportTransform 数组写入 (16 视口 × 8 寄存器: scale_x/y/z, translate_x/y/z, swizzle)
 - [x] P1 #4: Fs 服务补全 (目录遍历 OpenDirectory, 文件属性 GetEntryType, SaveData 文件打开, 路径规范化, 句柄管理重构)
 - [x] P1 #5: SM hipc 协议修复 (Initialize CMIF 头污染修复, KSession 句柄返回, 原地 IPC 缓冲正确处理, GetService 响应 CMIF 封装)
+- [x] **BUGFIX**: NvMap 分配从 guest 堆改为专用 carveout 区域 (0xD0000000)，避免 SetHeapSize unmap+remap 清空堆数据 (致命 NV GPU 初始化阻塞)
+- [x] **BUGFIX**: VI 帧缓冲 0xE0000000 延迟映射 — 构造时 g_vi_memory 为 null，改在 ServiceVi_Init 中映射 (致命 VI 显示初始化阻塞)
+- [x] **BUGFIX**: SM 服务映射表补充 vi:u / nvmap: / nvhost-ctrl: (提高服务名匹配兼容性)
 
 **Phase 3** — Services & IPC (Complete)
 - [x] SM service (service manager)

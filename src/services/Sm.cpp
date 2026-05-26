@@ -58,8 +58,8 @@ private:
         LOG_DEBUG("SM: GetService cleaned name='%s' (raw_len=%zu, clean_len=%zu)", name.c_str(), in_sz, name_len);
 
         // Resolve service name to init function and call EnsureService
-        if (name == "vi:" || name == "vi:m")            EnsureService(name.c_str(), ViInitialize);
-        else if (name == "nvdrv:" || name == "nvdrv#")   EnsureService(name.c_str(), NvInitialize);
+        if (name == "vi:" || name == "vi:m" || name == "vi:u") EnsureService(name.c_str(), ViInitialize);
+        else if (name == "nvdrv:" || name == "nvdrv#" || name == "nvmap:" || name == "nvhost-ctrl:") EnsureService(name.c_str(), NvInitialize);
         else if (name == "fsp-srv:" || name == "fs:")      EnsureService(name.c_str(), FsInitialize);
         else if (name == "hid:")      EnsureService(name.c_str(), HidInitialize);
         else if (name == "set:" || name == "set:sys") EnsureService(name.c_str(), SetInitialize);
@@ -100,9 +100,10 @@ private:
         static bool am_init=false, ns_init=false, ldr_init=false, spl_init=false;
         static bool acc_init=false, pcv_init=false;
 
-        if (strcmp(name, "vi:") == 0 || strcmp(name, "vi:m") == 0) {
+        if (strcmp(name, "vi:") == 0 || strcmp(name, "vi:m") == 0 || strcmp(name, "vi:u") == 0) {
             if (!vi_init) { vi_init = true; ViInitialize(); }
-        } else if (strcmp(name, "nvdrv:") == 0 || strcmp(name, "nvdrv#") == 0) {
+        } else if (strcmp(name, "nvdrv:") == 0 || strcmp(name, "nvdrv#") == 0 ||
+                   strcmp(name, "nvmap:") == 0 || strcmp(name, "nvhost-ctrl:") == 0) {
             if (!nv_init) { nv_init = true; NvInitialize(); }
         } else if (strcmp(name, "fsp-srv:") == 0 || strcmp(name, "fs:") == 0) {
             if (!fs_init) { fs_init = true; FsInitialize(); }
