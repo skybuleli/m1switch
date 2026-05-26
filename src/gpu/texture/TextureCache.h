@@ -105,6 +105,11 @@ public:
     size_t Count() const { std::lock_guard l(mutex_); return entries_.size(); }
     size_t MemoryUsed() const { return total_memory_; }
 
+    // Testing support: insert an entry directly into the cache without going
+    // through the Metal texture creation pipeline. The texture must already be
+    // a valid MTLTexture (use shared storage mode for test compatibility).
+    void SetEntryForTesting(u64 key, const CachedTexture& entry);
+
 private:
     u64 MakeKey(const TextureInfo& info) const;
     MTLPixelFormat ToMTLPixelFormat(MaxwellPixelFormat fmt) const;
@@ -142,4 +147,9 @@ private:
     // Helpers for address index management
     void IndexAdd(u64 gpu_address, u64 cache_key);
     void IndexRemove(u64 gpu_address, u64 cache_key);
+
 };
+
+// Testing helper: create a small RGBA8 texture with MTLStorageModeShared
+// for use with TextureCache invalidation tests.
+id<MTLTexture> CreateTestTexture(id<MTLDevice> device, u32 w, u32 h);

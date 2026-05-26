@@ -450,6 +450,31 @@ id<MTLTexture> TextureCache::CreateTexture(const TextureInfo& info,
 }
 
 // ═══════════════════════════════════════════════════════════
+// Testing support
+// ═══════════════════════════════════════════════════════════
+
+void TextureCache::SetEntryForTesting(u64 key, const CachedTexture& entry) {
+    std::lock_guard l(mutex_);
+    total_memory_ += entry.size_bytes;
+    entries_[key] = entry;
+    IndexAdd(entry.info.gpu_address, key);
+}
+
+id<MTLTexture> CreateTestTexture(id<MTLDevice> device, u32 w, u32 h) {
+    MTLTextureDescriptor* desc = [[MTLTextureDescriptor alloc] init];
+    desc.textureType = MTLTextureType2D;
+    desc.pixelFormat = MTLPixelFormatRGBA8Unorm;
+    desc.width = w;
+    desc.height = h;
+    desc.usage = MTLTextureUsageShaderRead;
+    desc.storageMode = MTLStorageModeShared;
+    id<MTLTexture> tex = [device newTextureWithDescriptor:desc];
+    [desc release];
+    return tex;
+}
+
+
+// ═══════════════════════════════════════════════════════════
 // Surface size computation
 // ═══════════════════════════════════════════════════════════
 //
@@ -1243,3 +1268,4 @@ void TextureCache::Flush() {
     sampler_cache_.clear();
     LOG_DEBUG("TextureCache: flushed");
 }
+
