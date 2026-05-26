@@ -495,16 +495,19 @@ SVC(SvcSendSyncRequest) {
 
     // guest 通过 `mrs x0, tpidrro_el0` 获取 TLS 指针，写入主机 TLS 中。
     // IPC 数据实际在主机 tpidrro_el0 + 0x100 处，而非我们的模拟 TLS。
-    // 从 host TLS 读取 IPC 请求（libnx 通过 tpidrro_el0 写入此处）
-    // 注意：当信号在线程间迁移时，tpidrro_el0 指向错误线程的 TLS → IPC 数据为空。
-    // 这是当前已知问题，修复需要 hook mrs tpidrro_el0 为固定地址。
-    u64 host_tls;
-    __asm__ volatile("mrs %0, tpidrro_el0" : "=r"(host_tls));
+    // 从固定 TLS 缓冲读取 IPC 请求（PatchSVCs 已将 mrs tpidrro_el0 重定向至此）
+    // 所有线程共享同一 TLS 地址，不受信号线程迁移影响
+    u64 fixed_tls = GetFixedTlsAddr();
+    if (fixed_tls == 0) {
+        LOG_ERROR("SendSyncRequest: no fixed TLS available!");
+        Ret(state, 0);
+        return;
+    }
+    u64 fixed_ipc = fixed_tls + TLS_IPC_OFFSET;
 
     u8 ipc_buf[TLS_IPC_SIZE];
     std::memset(ipc_buf, 0, TLS_IPC_SIZE);
-    std::memcpy(ipc_buf, reinterpret_cast<const void*>(host_tls + TLS_IPC_OFFSET), TLS_IPC_SIZE);
-
+    std::memcpy(ipc_buf, reinterpret_cast<const void*>(fixed_ipc), TLS_IPC_SIZE);
     u8 resp_buf[TLS_IPC_SIZE];
     std::memset(resp_buf, 0, TLS_IPC_SIZE);
     size_t resp_size = TLS_IPC_SIZE;
@@ -513,7 +516,7 @@ SVC(SvcSendSyncRequest) {
         session, ipc_buf, TLS_IPC_SIZE, resp_buf, &resp_size);
 
     size_t write_size = (resp_size < TLS_IPC_SIZE) ? resp_size : TLS_IPC_SIZE;
-    std::memcpy(reinterpret_cast<void*>(host_tls + TLS_IPC_OFFSET), resp_buf, write_size);
+    std::memcpy(reinterpret_cast<void*>(fixed_ipc), resp_buf, write_size);
 
     Ret(state, result);
 }

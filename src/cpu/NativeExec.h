@@ -27,3 +27,6 @@ public:
     static void RunGuest_NoZero(u64 abs_entry, u64 abs_stack);
     static void RunGuest_FullDirect(u64 abs_entry, u64 abs_stack);
 };
+
+// 获取固定 TLS 缓冲地址（所有线程共享，PatchSVCs 将 mrs tpidrro_el0 重定向至此）
+u64 GetFixedTlsAddr();

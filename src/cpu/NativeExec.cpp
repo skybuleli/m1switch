@@ -4,23 +4,55 @@
 #include <cstring>
 #include <csetjmp>
 #include <mach/mach.h>
+#include <sys/mman.h>
 
 extern "C" void GuestTrampoline(u64 entry_point, u64 stack_top,
                                 u64 arg0, u64 arg1, u64 arg2);
-extern "C" void GuestTrampoline_Minimal(u64 entry_point, u64 stack_top);
-extern "C" void GuestTrampoline_NoZero(u64 entry_point, u64 stack_top);
 
 thread_local sigjmp_buf g_guest_exit_jmp_buf;
 thread_local bool g_guest_exit_jmp_valid = false;
 
+// mrs Xt, tpidrro_el0 指令编码
 static constexpr u32 MRS_TPIDRRO_MASK = 0xFFFFFFE0;
 static constexpr u32 MRS_TPIDRRO_PATTERN = 0xD53BD060;
 
-// 将 tpidrro_el0 替换为 TLS 基址 (0xFD000000) 的指令序列。
-// mrs x0, tpidrro_el0 (0xD53BD060 | Rd) → movz x0, #0xFD00, LSL #16
-// 正确编码由 aarch64-none-elf-as 验证: mov x0, #0xFD000000 = 0xD2BFA000 + Rd
-static u32 MakeTlsLoad(u32 rd) {
-    return 0xD2BFA000 | rd;
+// 固定 TLS 缓冲：在 mmap 可用地址中找一个能用单条 MOVZ 加载的地址
+// MOVZ Xt, #imm16, LSL#(hw*16) 可以编码 4 种移位：0,16,32,48
+// 尝试地址 0x100000000 (hw=2, imm16=1) 到 0xF00000000 (hw=2, imm16=15)
+static u64 s_fixed_tls_addr = 0;
+static constexpr u64 FIXED_TLS_SIZE = 0x2000;
+
+static bool EnsureFixedTls() {
+    if (s_fixed_tls_addr != 0) return true;
+
+    // 尝试多个固定地址
+    for (u64 try_addr = 0x100000000ULL; try_addr <= 0x100000000ULL * 15; try_addr += 0x100000000ULL) {
+        munmap((void*)try_addr, FIXED_TLS_SIZE);
+        void* result = mmap((void*)try_addr, FIXED_TLS_SIZE,
+                           PROT_READ | PROT_WRITE,
+                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
+                           -1, 0);
+        if (result != MAP_FAILED) {
+            s_fixed_tls_addr = try_addr;
+            // 复制当前线程 HOST TLS
+            u64 host_tls;
+            __asm__ volatile("mrs %0, tpidrro_el0" : "=r"(host_tls));
+            std::memcpy(result, reinterpret_cast<void*>(host_tls), FIXED_TLS_SIZE);
+            LOG_INFO("Fixed TLS at 0x%llx (%zu KB)", s_fixed_tls_addr, FIXED_TLS_SIZE / 1024);
+            return true;
+        }
+    }
+
+    LOG_ERROR("EnsureFixedTls: could not allocate fixed TLS buffer");
+    return false;
+}
+
+u64 GetFixedTlsAddr() { return s_fixed_tls_addr; }
+
+// MOVZ Xt, #(addr>>32), LSL#32   — 加载 32 位对齐的地址
+static u32 MakeFixedTlsLoad(u32 rd) {
+    u32 imm16 = (u32)(s_fixed_tls_addr >> 32);  // hw=2, imm16 = high 16 bits
+    return 0xD2800000 | (2 << 21) | (imm16 << 5) | rd;
 }
 
 Result NativeExec::PatchSVCs(u8* code, u64 size,
@@ -28,6 +60,9 @@ Result NativeExec::PatchSVCs(u8* code, u64 size,
     if (!code || size < 4 || (size % 4) != 0)
         return Result::InvalidArgument;
     out_map.clear();
+
+    bool has_fixed_tls = EnsureFixedTls();
+
     u32 tls_patch_count = 0;
     for (u64 offset = 0; offset + 4 <= size; offset += 4) {
         u32 inst;
@@ -41,17 +76,21 @@ Result NativeExec::PatchSVCs(u8* code, u64 size,
             u32 brk_inst = BRK_BASE | ((brk_tag & 0xFFFF) << 5);
             std::memcpy(code + offset, &brk_inst, sizeof(brk_inst));
             out_map.push_back({brk_tag, svc_num});
-
             BrkCache_Add(reinterpret_cast<u64>(code) + offset, svc_num);
         }
 
-        // Patch mrs Xt, tpidrro_el0 (0xD53BD060|rd) → 用两条指令加载 HOST TLS 地址
-        // 需要将 x0 设为 0x3FD000000 (guest base 0x300000000 + TLS_BASE 0xFD000000)
-        // 但一条 MOVZ 无法编码 36 位立即数，跳过此优化，由 SVC handler 处理 TLS 映射
-        // 保留原始 mrs 指令让 libnx 继续使用 host TLS
+        // Patch mrs Xt, tpidrro_el0 → movz Xt, #imm16, LSL#32
+        // 加载固定 TLS 地址（所有线程共享，不受信号线程迁移影响）
+        if (has_fixed_tls && (inst & MRS_TPIDRRO_MASK) == MRS_TPIDRRO_PATTERN) {
+            u32 rd = inst & 0x1F;
+            u32 new_inst = MakeFixedTlsLoad(rd);
+            std::memcpy(code + offset, &new_inst, sizeof(new_inst));
+            tls_patch_count++;
+        }
     }
     if (tls_patch_count > 0) {
-        LOG_INFO("Patched %u mrs tpidrro_el0 → TLS_BASE (0xFD000000)", tls_patch_count);
+        LOG_INFO("Patched %u mrs tpidrro_el0 → fixed TLS 0x%llx",
+                 tls_patch_count, s_fixed_tls_addr);
     }
     __builtin___clear_cache(reinterpret_cast<char*>(code),
                             reinterpret_cast<char*>(code + size));
@@ -62,10 +101,17 @@ void NativeExec::RunGuest(u64 abs_entry, u64 abs_stack, u64 tls_base,
                           u64 arg0, u64 arg1, u64 arg2) {
     LOG_INFO("Guest: PC=0x%llx SP=0x%llx", abs_entry, abs_stack);
 
-    // 每线程信号栈 — 避免信号处理函数覆盖 guest 栈数据
     Result sr = SetupGuestSignalStack();
     if (Failed(sr)) {
-        LOG_ERROR("Failed to setup guest signal stack, continuing anyway...");
+        LOG_ERROR("Failed to setup guest signal stack, continuing...");
+    }
+
+    // 同步当前线程 HOST TLS → 固定 TLS 缓冲
+    if (s_fixed_tls_addr != 0) {
+        u64 host_tls;
+        __asm__ volatile("mrs %0, tpidrro_el0" : "=r"(host_tls));
+        std::memcpy(reinterpret_cast<void*>(s_fixed_tls_addr),
+                    reinterpret_cast<void*>(host_tls), FIXED_TLS_SIZE);
     }
 
     g_guest_exit_jmp_valid = true;
@@ -78,29 +124,4 @@ void NativeExec::RunGuest(u64 abs_entry, u64 abs_stack, u64 tls_base,
 
     LOG_ERROR("GuestTrampoline returned — should not happen");
     g_guest_exit_jmp_valid = false;
-}
-
-// ── Diagnostic variants for crash isolation ────────────────
-
-// Test 1: minimal trampoline — just br x0, no SP/register changes
-void NativeExec::RunGuest_Minimal(u64 abs_entry, u64 abs_stack) {
-    LOG_INFO("DIAG_GUEST: Minimal (br x0 only) PC=0x%llx", abs_entry);
-    GuestTrampoline_Minimal(abs_entry, abs_stack);
-    LOG_ERROR("DIAG_GUEST: Minimal returned!");
-}
-
-// Test 2: SP change only, no register clearing
-void NativeExec::RunGuest_NoZero(u64 abs_entry, u64 abs_stack) {
-    LOG_INFO("DIAG_GUEST: NoZero (SP + br) PC=0x%llx SP=0x%llx", abs_entry, abs_stack);
-    GuestTrampoline_NoZero(abs_entry, abs_stack);
-    LOG_ERROR("DIAG_GUEST: NoZero returned!");
-}
-
-// Test 3: full trampoline but with direct br x0 instead of br x30
-// (to test if mov x30, x0 + br x30 vs br x0 matters)
-extern "C" void GuestTrampoline_FullDirect(u64 entry_point, u64 stack_top);
-void NativeExec::RunGuest_FullDirect(u64 abs_entry, u64 abs_stack) {
-    LOG_INFO("DIAG_GUEST: FullDirect PC=0x%llx SP=0x%llx", abs_entry, abs_stack);
-    GuestTrampoline_FullDirect(abs_entry, abs_stack);
-    LOG_ERROR("DIAG_GUEST: FullDirect returned!");
 }
