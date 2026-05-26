@@ -158,6 +158,18 @@ void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
         state_.index_buffer.address = (state_.index_buffer.address & ~0xFFFFFFFFULL) | value;
         break;
 
+    case static_cast<Method3D>(0x5F3):  // IndexArrayStartIova 高32位
+        state_.index_buffer.address = (state_.index_buffer.address & 0xFFFFFFFFULL) | ((u64)value << 32);
+        break;
+
+    case Method3D::IndexArrayLimitIova:
+        state_.index_buffer.limit = (state_.index_buffer.limit & ~0xFFFFFFFFULL) | value;
+        break;
+
+    case static_cast<Method3D>(0x5F5):  // IndexArrayLimitIova 高32位
+        state_.index_buffer.limit = (state_.index_buffer.limit & 0xFFFFFFFFULL) | ((u64)value << 32);
+        break;
+
     case Method3D::IndexArrayFormat:
         state_.index_buffer.format = static_cast<IndexFormat>(value);
         break;
@@ -169,6 +181,10 @@ void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
 
     case Method3D::SetProgramRegion:
         state_.program_region = (state_.program_region & ~0xFFFFFFFFULL) | value;
+        break;
+
+    case static_cast<Method3D>(0x583):  // SetProgramRegion 高32位
+        state_.program_region = (state_.program_region & 0xFFFFFFFFULL) | ((u64)value << 32);
         break;
 
     case Method3D::SetTexHeaderPool:

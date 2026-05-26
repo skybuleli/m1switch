@@ -184,10 +184,10 @@ struct VertexArrayState {
 
 // ── Vertex attrib (0x458 array[32]) ─────────────────────────
 struct VertexAttribState {
-    u32 buffer_index  = 0;
-    u32 offset        = 0;
-    u32 size          = 0;   // bytes per component
-    u32 type          = 0;   // float/sint/uint
+    u32 buffer_index  = 0;  // 绑定的 vertex buffer 索引
+    u32 offset        = 0;  // 属性在 buffer 内的偏移 (字节)
+    u32 size          = 0;  // 分量数 (1-4: x, xy, xyz, xyzw)
+    u32 type          = 0;  // 0=float, 1=sint, 2=uint
     bool is_fixed     = false;
     bool is_bgra      = false;
 };
@@ -195,6 +195,7 @@ struct VertexAttribState {
 // ── Index buffer state ──────────────────────────────────────
 struct IndexBufferState {
     u64         address = 0;
+    u64         limit   = 0;     // IOVA 索引缓冲区上限地址
     u32         first   = 0;
     u32         count   = 0;
     IndexFormat format  = IndexFormat::Uint32;

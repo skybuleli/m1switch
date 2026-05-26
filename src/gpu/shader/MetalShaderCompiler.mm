@@ -237,7 +237,7 @@ static id<MTLRenderPipelineState> MetalCreateRenderPipeline(
     desc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm_sRGB;
     desc.depthAttachmentPixelFormat = MTLPixelFormatInvalid;
 
-    // Default vertex descriptor
+    // 最小化顶点描述符 — 由 MetalRenderer 动态构建，此处为回退
     MTLVertexDescriptor* vd = [[MTLVertexDescriptor alloc] init];
     vd.attributes[0].format = MTLVertexFormatFloat2;
     vd.attributes[0].offset = 0;

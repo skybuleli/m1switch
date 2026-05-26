@@ -75,7 +75,7 @@ void StateTracker::OnMethod(u32 subch, u32 method, u32 value) {
             draw.elements_count  = st.draw_elements_count;
             draw.index_addr      = st.index_buffer.address;
             draw.index_format    = st.index_buffer.format;
-            draw.index_count     = st.index_buffer.count;
+            draw.index_count     = st.draw_elements_count;
             draw.pipeline_key    = ComputePipelineKey(st);
 
             draw_queue_.push_back(draw);

@@ -86,6 +86,9 @@ private:
         MTLPixelFormat colorFormat, MTLPixelFormat depthFormat,
         const BlendState& blend);
 
+    // ── 从 GpuState3D 动态构建 MTLVertexDescriptor ─────
+    MTLVertexDescriptor* BuildVertexDescriptor();
+
     MetalDevice& device_;
     StateTracker* tracker_ = nullptr;
     ShaderManager* shader_mgr_ = nullptr;

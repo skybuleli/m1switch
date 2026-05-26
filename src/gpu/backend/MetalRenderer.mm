@@ -328,6 +328,76 @@ void MetalRenderer::ApplyCulling(id<MTLRenderCommandEncoder> enc) {
     }
 }
 
+// ── 从 GpuState3D 构建动态 MTLVertexDescriptor ──────────────
+// 遍历 vertex_attribs[], 为每个启用的属性配置 Metal 顶点布局。
+// 每个 vertex_attrib 绑定到 vertex_arrays[buffer_index] 对应的 buffer slot。
+MTLVertexDescriptor* MetalRenderer::BuildVertexDescriptor() {
+    MTLVertexDescriptor* vd = [[MTLVertexDescriptor alloc] init];
+
+    if (!tracker_) {
+        // 回退: 最小化布局 (pos+color, stride=24)
+        vd.attributes[0].format = MTLVertexFormatFloat2;
+        vd.attributes[0].offset = 0;
+        vd.attributes[0].bufferIndex = 0;
+        vd.attributes[1].format = MTLVertexFormatFloat4;
+        vd.attributes[1].offset = 8;
+        vd.attributes[1].bufferIndex = 0;
+        vd.layouts[0].stride = 24;
+        vd.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+        return vd;
+    }
+
+    const auto& state = tracker_->GetState3D();
+    int attr_count = 0;
+
+    // 遍历 32 个顶点属性槽位
+    for (u32 i = 0; i < MAX_VERTEX_ATTRIBS; i++) {
+        const auto& attr = state.vertex_attribs[i];
+        if (attr.is_fixed || attr.size == 0) continue;
+
+        u32 buf_idx = attr.buffer_index;
+        if (buf_idx >= MAX_VERTEX_ARRAYS) continue;
+
+        const auto& va = state.vertex_arrays[buf_idx];
+        if (!va.enabled || va.stride == 0) continue;
+
+        // 映射 Maxwell 类型+分量数 → MTLVertexFormat
+        MTLVertexFormat fmt = ToMetalVertexFormat(attr.size, attr.type);
+        if (fmt == MTLVertexFormatInvalid) continue;
+
+        vd.attributes[attr_count].format = fmt;
+        vd.attributes[attr_count].offset = attr.offset;
+        vd.attributes[attr_count].bufferIndex = buf_idx;
+        attr_count++;
+    }
+
+    // 如果没有启用属性, 回退到最小化布局
+    if (attr_count == 0) {
+        vd.attributes[0].format = MTLVertexFormatFloat2;
+        vd.attributes[0].offset = 0;
+        vd.attributes[0].bufferIndex = 0;
+        vd.attributes[1].format = MTLVertexFormatFloat4;
+        vd.attributes[1].offset = 8;
+        vd.attributes[1].bufferIndex = 0;
+        vd.layouts[0].stride = 24;
+        vd.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+        return vd;
+    }
+
+    // 为每个启用的 vertex array 配置 layout stride
+    for (u32 i = 0; i < MAX_VERTEX_ARRAYS; i++) {
+        const auto& va = state.vertex_arrays[i];
+        if (va.enabled && va.stride > 0) {
+            vd.layouts[i].stride = va.stride;
+            vd.layouts[i].stepFunction = (va.divisor > 0)
+                ? MTLVertexStepFunctionPerInstance
+                : MTLVertexStepFunctionPerVertex;
+        }
+    }
+
+    return vd;
+}
+
 void MetalRenderer::BindVertexBuffers(id<MTLRenderCommandEncoder> enc, u32 count) {
     if (!tracker_) return;
     const auto& state = tracker_->GetState3D();
@@ -336,7 +406,7 @@ void MetalRenderer::BindVertexBuffers(id<MTLRenderCommandEncoder> enc, u32 count
 
     if (count == 0) count = 3;
 
-    for (int i = 0; i < MAX_VERTEX_ARRAYS; i++) {
+    for (u32 i = 0; i < MAX_VERTEX_ARRAYS; i++) {
         const auto& va = state.vertex_arrays[i];
         if (va.enabled && va.address > 0 && va.stride > 0) {
             u32 buf_size = va.stride * count;
@@ -550,7 +620,12 @@ id<MTLRenderPipelineState> MetalRenderer::CreatePipelineWithBlend(
         desc.depthAttachmentPixelFormat = depthFormat;
     }
 
+    // 动态顶点描述符：从 GpuState3D vertex_attribs 构建
+    MTLVertexDescriptor* vd = BuildVertexDescriptor();
+    desc.vertexDescriptor = vd;
+
     id<MTLRenderPipelineState> pipeline = device_.CreateRenderPipeline(desc);
+    [vd release];
     [desc release];
     return pipeline;
 }
@@ -657,7 +732,6 @@ void MetalRenderer::ResolveRenderTargets() {
     if (!tracker_) return;
 
     const auto& state = tracker_->GetState3D();
-    auto* mem = tracker_->GetMemory();
 
     rt_count_ = 0;
     rt_active_ = false;
@@ -872,7 +946,6 @@ void MetalRenderer::CopyRenderTargetsToGuest(id<MTLCommandBuffer> cmdBuf) {
         __block u64 rt_addr = rt.address;
         __block u32 rt_size = size;
         __block TextureCache* tex_cache = texture_cache_;
-        __block Memory* mem_ptr = mem;
         [cmdBuf addCompletedHandler:^(id<MTLCommandBuffer>) {
             u8* staging_ptr = (u8*)[staging contents];
             if (staging_ptr && guest_ptr) {
