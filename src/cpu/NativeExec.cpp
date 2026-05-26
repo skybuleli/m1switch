@@ -13,14 +13,27 @@ extern "C" void GuestTrampoline_NoZero(u64 entry_point, u64 stack_top);
 thread_local sigjmp_buf g_guest_exit_jmp_buf;
 thread_local bool g_guest_exit_jmp_valid = false;
 
+static constexpr u32 MRS_TPIDRRO_MASK = 0xFFFFFFE0;
+static constexpr u32 MRS_TPIDRRO_PATTERN = 0xD53BD060;
+
+// 将 tpidrro_el0 替换为 TLS 基址 (0xFD000000) 的指令序列。
+// mrs x0, tpidrro_el0 (0xD53BD060 | Rd) → movz x0, #0xFD00, LSL #16
+// 正确编码由 aarch64-none-elf-as 验证: mov x0, #0xFD000000 = 0xD2BFA000 + Rd
+static u32 MakeTlsLoad(u32 rd) {
+    return 0xD2BFA000 | rd;
+}
+
 Result NativeExec::PatchSVCs(u8* code, u64 size,
                               std::vector<std::pair<u32, u32>>& out_map) {
     if (!code || size < 4 || (size % 4) != 0)
         return Result::InvalidArgument;
     out_map.clear();
+    u32 tls_patch_count = 0;
     for (u64 offset = 0; offset + 4 <= size; offset += 4) {
         u32 inst;
         std::memcpy(&inst, code + offset, sizeof(inst));
+
+        // Patch SVC → BRK
         if ((inst & SVC_MASK) == SVC_PATTERN) {
             u32 svc_num = (inst >> 5) & 0xFFFF;
             if (svc_num >= MAX_SVC_ID) continue;
@@ -29,9 +42,16 @@ Result NativeExec::PatchSVCs(u8* code, u64 size,
             std::memcpy(code + offset, &brk_inst, sizeof(brk_inst));
             out_map.push_back({brk_tag, svc_num});
 
-            // 填充 BRK 缓存（信号处理函数使用，无需 vm_read）
             BrkCache_Add(reinterpret_cast<u64>(code) + offset, svc_num);
         }
+
+        // Patch mrs Xt, tpidrro_el0 (0xD53BD060|rd) → 用两条指令加载 HOST TLS 地址
+        // 需要将 x0 设为 0x3FD000000 (guest base 0x300000000 + TLS_BASE 0xFD000000)
+        // 但一条 MOVZ 无法编码 36 位立即数，跳过此优化，由 SVC handler 处理 TLS 映射
+        // 保留原始 mrs 指令让 libnx 继续使用 host TLS
+    }
+    if (tls_patch_count > 0) {
+        LOG_INFO("Patched %u mrs tpidrro_el0 → TLS_BASE (0xFD000000)", tls_patch_count);
     }
     __builtin___clear_cache(reinterpret_cast<char*>(code),
                             reinterpret_cast<char*>(code + size));

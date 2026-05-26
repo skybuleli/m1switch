@@ -187,7 +187,7 @@ void SigHandler::EnsureInstalled() {
 
     struct sigaction sa = {};
     sa.sa_sigaction = TrapHandler;
-    sa.sa_flags = SA_SIGINFO | SA_RESTART | SA_ONSTACK;
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;
     sigemptyset(&sa.sa_mask);
     if (sigaction(SIGTRAP, &sa, &s_old_action) != 0 ||
         sigaction(SIGSEGV, &sa, nullptr) != 0 ||

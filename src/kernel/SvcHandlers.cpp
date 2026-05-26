@@ -495,6 +495,7 @@ SVC(SvcSendSyncRequest) {
 
     // guest 通过 `mrs x0, tpidrro_el0` 获取 TLS 指针，写入主机 TLS 中。
     // IPC 数据实际在主机 tpidrro_el0 + 0x100 处，而非我们的模拟 TLS。
+    // 读取 host TLS 中的 IPC 请求数据（libnx 通过 tpidrro_el0 写入此处）
     u64 host_tls;
     __asm__ volatile("mrs %0, tpidrro_el0" : "=r"(host_tls));
 
