@@ -178,14 +178,17 @@ Result EmulatorCore::Run() {
     LOG_INFO("Starting main guest thread: PC=0x%llx SP=0x%llx handle=0x%x",
              main_thread->entry_point, main_thread->stack_top, main_handle);
 
-    std::thread guest([this, main_thread]() {
+    std::thread guest([this, main_thread, main_handle]() {
         pthread_setname_np("GuestMain");
         extern void SvcHandlers_SetCurrentTls(u64);
         SvcHandlers_SetCurrentTls(main_thread->tls_base);
         NativeExec::RunGuest(
             main_thread->entry_point,
             main_thread->stack_top,
-            main_thread->tls_base);
+            main_thread->tls_base,
+            0,
+            main_handle,
+            0);
         main_thread->running.store(false);
         main_thread->MarkFinished();
         running_.store(false);

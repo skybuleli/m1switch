@@ -2,6 +2,7 @@
 
 #include "common/Types.h"
 #include "cpu/ExceptionHandler.h"
+#include <atomic>
 
 void SvcHandler_Dispatch(u32 svc_num, GuestThreadState* state);
 
@@ -17,3 +18,5 @@ void EmuCore_SetTlsBase(u64 base);
 void SvcHandlers_SetDispatch(SvcHandlerFn fn);
 void SvcHandlers_SetCurrentTls(u64 tls);
 u64  SvcHandlers_GetCurrentTls();
+
+extern std::atomic<bool> g_guest_exited;

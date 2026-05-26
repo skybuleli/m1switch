@@ -22,7 +22,6 @@ void SvcTable_Init() {
 void SvcTable_Register(u32 svc_num, SvcHandler handler) {
     if (svc_num >= MAX_SVC) { LOG_ERROR("SVC #%u out of range", svc_num); return; }
     s_svc_table[svc_num] = handler;
-    LOG_DEBUG("SVC #0x%02x handler registered", svc_num);
 }
 
 void SvcHandler_Dispatch(u32 svc_num, GuestThreadState* state) {

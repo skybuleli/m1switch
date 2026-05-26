@@ -10,6 +10,7 @@
 #include "cpu/NativeExec.h"
 #include "cpu/ExceptionHandler.h"
 #include "kernel/SvcTable.h"
+#include "kernel/Kernel.h"
 #include "debug/TraceEngine.h"
 #include "debug/DebugServer.h"
 #include "debug/SnapshotManager.h"
@@ -20,47 +21,74 @@ static constexpr u64 TLS_PER_THREAD   = 0x200;
 #include "gpu/StateTracker.h"
 #include "services/Nv.h"
 
+// 服务初始化函数声明（各服务的静态对象在静态库中可能被链接器丢弃）
+extern void ServiceSm_Init();
+extern void ServiceSpl_Init();
+extern void ServiceAccount_Init();
+extern void ServiceAm_Init();
+extern void ServiceNs_Init();
+extern void ServiceLdr_Init();
+extern void ServiceFs_Init();
+extern void ServiceHid_Init();
+extern void ServiceVi_Init();
+extern void ServiceSet_Init();
+extern void ServiceApm_Init();
+extern void ServiceTime_Init();
+extern void ServiceAudioOut_Init();
+extern void ServicePcv_Init();
+
 #include <cstdio>
 #include <cstring>
 #include <chrono>
 #include <thread>
+#include <atomic>
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <mach/mach_vm.h>
 
-static volatile bool g_guest_exited = false;
 static Memory*       g_mem  = nullptr;
 static StateTracker* g_trk  = nullptr;
+extern std::atomic<bool> g_guest_crashed;
+
+// ── 音频/输入桩函数（headless 模式下不需要真实硬件 ────────────
+// AudioOut 和 Hid 服务引用这些符号，但 headless 运行器不链接 Metal/AppKit
+extern "C" {
+    bool Audio_IsActive() { return false; }
+    u32 Audio_SubmitPcm(const s16*, u32 c) { return c; }
+    u32 Audio_SubmitAdpcm(const u8* f, u32 c) { return c; }
+    void Audio_SetVolume(float) {}
+    float Audio_GetVolume() { return 0.0f; }
+    void Input_Poll() {}
+    void Input_WriteToHidSharedMemory(u8*, u64) {}
+    void Audio_Initialize() {}
+    void Audio_Shutdown() {}
+}
 
 // ── SIGTRAP handler for SVC dispatch ─────────────────────────
 static SigHandler g_sig_handler;
-
-static void SvcExitHandler(u32 num, GuestThreadState* state) {
-    LOG_INFO("svcExitProcess(%llu) — guest exited", state->x[0]);
-    g_guest_exited = true;
-    state->x[0] = 0;
-}
 
 // ── Main ─────────────────────────────────────────────────────
 int main(int argc, char** argv) {
     Log::Init();
 
     if (argc < 2) {
-        printf("Usage: %s <path-to.nro> [--timeout=N]\n", argv[0]);
+        printf("Usage: %s <path-to.nro> [--timeout=N] [--trace]\n", argv[0]);
         return 1;
     }
 
     const char* path = argv[1];
     int timeout_sec = 5;
+    bool trace_enable = false;
     for (int i = 2; i < argc; i++) {
         if (sscanf(argv[i], "--timeout=%d", &timeout_sec) == 1) {}
+        if (strcmp(argv[i], "--trace") == 0) trace_enable = true;
     }
 
-    LOG_INFO("=== Headless Runner ===\n");
-    LOG_INFO("NRO: %s\n", path);
-    LOG_INFO("Timeout: %ds\n", timeout_sec);
+    LOG_INFO("=== Headless Runner ===");
+    LOG_INFO("NRO: %s", path);
+    LOG_INFO("Timeout: %ds", timeout_sec);
 
     // ── 1. Memory ──────────────────────────────────
     Memory memory;
@@ -72,7 +100,7 @@ int main(int argc, char** argv) {
     auto* tls = memory.Pointer(TLS_SLOTS_BASE);
     if (tls) std::memset(tls, 0, 0x1000);
 
-    // ── 2. StateTracker ────────────────────────────
+    // ── 2. StateTracker ─────────────────────────────
     StateTracker tracker;
     tracker.SetMemory(&memory);
     g_trk = &tracker;
@@ -82,36 +110,117 @@ int main(int argc, char** argv) {
     NroLoadInfo info;
     Result r = loader.LoadFromFile(path, info);
     if (Failed(r)) {
-        LOG_ERROR("Failed to load NRO\n");
+        LOG_ERROR("Failed to load NRO");
         return 1;
     }
-    LOG_INFO("Entry: 0x%llx, %zu seg(s)\n", info.entry_point, info.segments.size());
+    LOG_INFO("Entry: 0x%llx, %zu seg(s)", info.entry_point, info.segments.size());
 
-    // ── 4. Stack + Heap ────────────────────────────
+    // ── 验证内存内容 ─────────────────────────────
+    {
+        // "sm:" 在文件偏移 0x6d16d8, 对应 guest 地址 0x406d16d8
+        u64 sm_addr = 0x406d16d8;
+        u8* ptr = memory.Pointer(sm_addr);
+        u8 buf[16] = {};
+        if (ptr) {
+            std::memcpy(buf, ptr, 16);
+            LOG_INFO("MEM_VERIFY: sm: addr=0x%llx data=%02x%02x%02x%02x%02x%02x%02x%02x...",
+                     sm_addr, buf[0],buf[1],buf[2],buf[3],buf[4],buf[5],buf[6],buf[7]);
+        }
+        // 也验证 .text 第一条指令
+        u8* text_ptr = memory.Pointer(0x40000000);
+        if (text_ptr) {
+            std::memcpy(buf, text_ptr, 4);
+            u32 first_inst = buf[0] | (buf[1]<<8) | (buf[2]<<16) | (buf[3]<<24);
+            LOG_INFO("MEM_VERIFY: .text[0] = 0x%08x (expected 0x14000020)", first_inst);
+        }
+        // 验证 .text 最后一个可访问字节
+        u8* text_end = memory.Pointer(0x40614fff);
+        if (text_end) {
+            std::memcpy(buf, text_end, 1);
+            LOG_INFO("MEM_VERIFY: .text[0x614fff] = 0x%02x", buf[0]);
+        }
+        // 验证 .rodata 开头
+        u8* rodata_start = memory.Pointer(0x40615000);
+        if (rodata_start) {
+            std::memcpy(buf, rodata_start, 16);
+            LOG_INFO("MEM_VERIFY: .rodata[0] = %02x%02x%02x%02x...", buf[0],buf[1],buf[2],buf[3]);
+        }
+    }
+
+    // ── 4. Stack + Heap ──────────────────────────────
     memory.SetupStack(0x100000);
-    LOG_INFO("Stack: top=0x%llx size=0x%llx\n", memory.GetStackTop(), 0x100000ULL);
+    LOG_INFO("Stack: top=0x%llx size=0x%llx", memory.GetStackTop(), 0x100000ULL);
+    // 预分配堆内存（在信号处理函数外分配，避免 macOS ARM64 在信号上下文中
+    //  mach_vm_map 后访存异常的问题）
+    {
+        Result r = memory.SetHeapSize(0x100000);
+        LOG_INFO("Heap: base=0x%llx size=0x%llx result=%d",
+                 memory.GetHeapBase(), 0x100000ULL, (int)r);
+        if (Failed(r)) {
+            LOG_WARN("Heap pre-allocation failed — some NROs will not work");
+        } else {
+            // 写入所有页确保 demand paging 已触发
+            u8* heap_ptr = memory.Pointer(memory.GetHeapBase());
+            if (heap_ptr) {
+                std::memset(heap_ptr, 0xAB, 0x100000);
+                LOG_INFO("Heap: %llu bytes pre-touched", (u64)0x100000);
+            }
+        }
+    }
 
     u64 abs_entry = memory.BaseAddress() + info.entry_point;
     u64 abs_stack = memory.BaseAddress() + memory.GetStackTop();
 
-    // ── 5. SVC table ──────────────────────────────
+    // ── 5. SVC table + 服务初始化 ───────────────────
     SvcTable_Init();
-    SvcTable_Register(0x07, SvcExitHandler);
 
-    // ── 6. NV wiring ──────────────────────────────
+    // 初始化所有系统服务（显式调用确保静态库中的服务对象被链接）
+    LOG_INFO("Initializing system services...");
+    ServiceSm_Init();
+    ServiceSpl_Init();
+    ServiceAccount_Init();
+    ServiceAm_Init();
+    ServiceNs_Init();
+    ServiceLdr_Init();
+    ServiceFs_Init();
+    ServiceHid_Init();
+    ServiceVi_Init();
+    ServiceSet_Init();
+    ServiceApm_Init();
+    ServiceTime_Init();
+    ServiceAudioOut_Init();
+    ServicePcv_Init();
+    LOG_INFO("All system services initialized");
+
+    auto* main_thread = new KThread();
+    main_thread->entry_point = abs_entry;
+    main_thread->stack_top = abs_stack;
+    main_thread->thread_id = 1;
+    main_thread->tls_base = TLS_SLOTS_BASE;
+    main_thread->priority = 0x10;
+    main_thread->started.store(true);
+    main_thread->running.store(true);
+    u32 main_handle = KernelHandleTable().Create(main_thread);
+    LOG_INFO("Main thread handle=0x%x", main_handle);
+
+    // ── 6. NV wiring ────────────────────────────────
     ServiceNv_SetMemory(&memory);
     ServiceNv_SetTracker(&tracker);
 
-    // ── 7. Install SIGTRAP ─────────────────────────
+    // ── 7. Install SIGTRAP ──────────────────────────
     g_sig_handler.SetSvcDispatch([](u32 svc, GuestThreadState* st) {
         SvcHandler_Dispatch(svc, st);
     });
     g_sig_handler.Install();
 
-    // ── 7.5 初始化调试框架 ──────────────────────────────
+    // ── 7.5 初始化调试框架 ──────────────────────────
     TraceEngine::Instance().EnableChannel(TraceChannel::SVC, true);
     TraceEngine::Instance().EnableChannel(TraceChannel::IPC, true);
     TraceEngine::Instance().EnableChannel(TraceChannel::THREAD, true);
+
+    if (trace_enable) {
+        TraceEngine::Instance().EnableChannel(TraceChannel::GPU_CMD, true);
+    }
 
     std::string trace_path = std::string(path) + ".trace";
     TraceEngine::Instance().SetOutputFile(trace_path);
@@ -121,59 +230,76 @@ int main(int argc, char** argv) {
 
     DebugServer::Instance().Start();
 
-    LOG_INFO("Starting guest...\n");
+    LOG_INFO("Starting guest...");
 
-    // ── 8. Run guest ─────────────────────────────────
-    // Launch guest thread via NativeExec::RunGuest
-    // The SIGTRAP handler will intercept BRK instructions (patched SVCs)
-    // and dispatch them through the SVC handler table.
-    std::thread guest([abs_entry, abs_stack]() {
+    // ── 8. Run guest ───────────────────────────────
+    // Guest 线程：svcExitProcess/svcExitThread 会调用 pthread_exit
+    // 主线程等待 g_guest_exited 或超时
+    std::thread guest([abs_entry, abs_stack, main_handle]() {
         pthread_setname_np("GuestMain");
-        NativeExec::RunGuest(abs_entry, abs_stack, TLS_SLOTS_BASE);
-        g_guest_exited = true;
-        LOG_INFO("Guest thread returned\n");
+        extern void SvcHandlers_SetCurrentTls(u64);
+        SvcHandlers_SetCurrentTls(TLS_SLOTS_BASE);
+        TraceEngine::Instance().SetCurrentThreadId(1);
+        NativeExec::RunGuest(abs_entry, abs_stack, TLS_SLOTS_BASE, 0, main_handle, 0);
+        // siglongjmp 使 RunGuest 安全返回（ExitProcess/ExitThread 时）
+        LOG_INFO("Guest thread returned from RunGuest (normal exit)");
+        if (auto* t = KernelHandleTable().Get<KThread>(main_handle)) {
+            t->running.store(false);
+            t->MarkFinished();
+        }
+        g_guest_exited.store(true);
     });
-    guest.detach();
 
-    // ── 9. Wait for exit or timeout ────────────────
+    // ── 9. Wait for exit or timeout ──────────────────
     auto start = std::chrono::steady_clock::now();
-    while (!g_guest_exited) {
+    while (!g_guest_exited.load()) {
         auto elapsed = std::chrono::steady_clock::now() - start;
         if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() >= timeout_sec) {
-            LOG_INFO("TIMEOUT (%ds) — guest did not exit in time\n", timeout_sec);
+            LOG_INFO("TIMEOUT (%ds) — guest did not exit in time", timeout_sec);
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    if (g_guest_exited) {
-        LOG_INFO("GUEST EXITED NORMALLY\n");
+    if (g_guest_exited.load()) {
+        if (g_guest_crashed.load()) {
+            LOG_ERROR("GUEST CRASHED");
+        } else {
+            LOG_INFO("GUEST EXITED NORMALLY");
+        }
     } else {
-        LOG_INFO("GUEST TIMEOUT\n");
+        LOG_INFO("GUEST TIMEOUT — 可能卡在等待/循环中");
+
+        // 超时时打印最后已知状态
+        LOG_INFO("尝试取消 guest 线程...");
+        pthread_cancel(guest.native_handle());
     }
 
-    // ── 10. 输出 trace 统计 ─────────────────────────────
+    // 等待线程结束（最多 1 秒）
+    guest.detach();
+
+    // ── 10. 输出 trace 统计 ──────────────────────────
     auto stats = TraceEngine::Instance().GetStats();
-    LOG_INFO("=== Trace Stats ===\n");
-    LOG_INFO("Total events: %llu\n", (unsigned long long)stats.total_events);
-    LOG_INFO("Dropped events: %llu\n", (unsigned long long)stats.dropped_events);
+    LOG_INFO("=== Trace Stats ===");
+    LOG_INFO("Total events: %llu", (unsigned long long)stats.total_events);
+    LOG_INFO("Dropped events: %llu", (unsigned long long)stats.dropped_events);
     for (size_t i = 0; i < (size_t)TraceChannel::COUNT; i++) {
-        LOG_INFO("  %s: %llu events\n", TraceChannelNames[i],
+        LOG_INFO("  %s: %llu events", TraceChannelNames[i],
                  (unsigned long long)stats.events_per_channel[i]);
     }
 
-    // ── 11. 输出最近 SVC/IPC trace ──────────────────────
-    auto svc_events = TraceEngine::Instance().Query(TraceChannel::SVC, 0, UINT64_MAX, 20);
+    // ── 11. 输出最近 SVC/IPC trace ───────────────────
+    auto svc_events = TraceEngine::Instance().Query(TraceChannel::SVC, 0, UINT64_MAX, 30);
     if (!svc_events.empty()) {
-        LOG_INFO("=== Recent SVC calls ===\n");
+        LOG_INFO("=== Recent SVC calls ===");
         for (const auto& evt : svc_events) {
             bool is_return = (evt.event_id & 0x8000) != 0;
             u32 svc_num = evt.event_id & 0x7FFF;
             if (is_return) {
-                LOG_INFO("  SVC #0x%02x RETURN: x0_before=0x%llx result=0x%llx\n",
+                LOG_INFO("  SVC #0x%02x RETURN: x0_before=0x%llx result=0x%llx",
                          svc_num, (unsigned long long)evt.args[0], (unsigned long long)evt.result);
             } else {
-                LOG_INFO("  SVC #0x%02x CALL: x0=0x%llx x1=0x%llx\n",
+                LOG_INFO("  SVC #0x%02x CALL: x0=0x%llx x1=0x%llx",
                          svc_num, (unsigned long long)evt.args[0], (unsigned long long)evt.args[1]);
             }
         }
@@ -181,15 +307,15 @@ int main(int argc, char** argv) {
 
     auto ipc_events = TraceEngine::Instance().Query(TraceChannel::IPC, 0, UINT64_MAX, 20);
     if (!ipc_events.empty()) {
-        LOG_INFO("=== Recent IPC calls ===\n");
+        LOG_INFO("=== Recent IPC calls ===");
         for (const auto& evt : ipc_events) {
             bool is_return = (evt.event_id & 0x8000) != 0;
             u32 cmd_id = evt.event_id & 0x7FFF;
             if (is_return) {
-                LOG_INFO("  IPC cmd=%u RESP: session=0x%llx result=0x%llx\n",
+                LOG_INFO("  IPC cmd=%u RESP: session=0x%llx result=0x%llx",
                          cmd_id, (unsigned long long)evt.args[0], (unsigned long long)evt.result);
             } else {
-                LOG_INFO("  IPC cmd=%u REQ: session=0x%llx arg=0x%llx\n",
+                LOG_INFO("  IPC cmd=%u REQ: session=0x%llx arg=0x%llx",
                          cmd_id, (unsigned long long)evt.args[0], (unsigned long long)evt.args[1]);
             }
         }
@@ -198,5 +324,6 @@ int main(int argc, char** argv) {
     TraceEngine::Instance().Flush();
     DebugServer::Instance().Stop();
 
-    return 0;
+    if (g_guest_crashed.load()) return 3;
+    return g_guest_exited.load() ? 0 : 2;
 }

@@ -44,37 +44,34 @@ Result Memory::MapPhysical(u64 address, size_t size, Permission perm,
     mach_vm_address_t abs_addr = base_addr_ + address;
     int prot = mach_vm_prot_from_perm(perm);
 
-    // mach_vm_map with VM_FLAGS_FIXED places a new mapping at the exact address.
-    // Use VM_PROT_ALL as max_prot so we can later promote to any
-    // permission combination (including EXECUTE) via mach_vm_protect.
-    // On Apple Silicon, restricting max_prot to R+W at creation time
-    // prevents adding EXECUTE later even with mach_vm_protect.
+    // Apple Silicon 使用 16K 硬件页，mach_vm_map 需要 16K 对齐的地址和大小。
+    // 自动处理非对齐请求：
+    //   将地址向下取整到 16K，大小向上取整（覆盖从对齐后地址到数据末尾的范围）。
+    //   先 deallocate 整个对齐区域再映射，避免 KERN_NO_SPACE。
+    static constexpr u64 HOST_PAGE = 0x4000;
+    u64 page_off = abs_addr & (HOST_PAGE - 1);     // 页内偏移
+    u64 map_addr = abs_addr & ~(HOST_PAGE - 1);     // 16K 对齐基址
+    u64 map_size = ((size + page_off + HOST_PAGE - 1) / HOST_PAGE) * HOST_PAGE;
+
+    // 先释放目标区域（允许重叠）
+    mach_vm_deallocate(mach_task_self(), map_addr, map_size);
+
     kern_return_t kr = mach_vm_map(
-        mach_task_self(), &abs_addr, size, 0,
+        mach_task_self(), &map_addr, map_size, 0,
         VM_FLAGS_FIXED,
         MEMORY_OBJECT_NULL, 0, FALSE,
         VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE,
         VM_INHERIT_NONE);
 
-    if (kr == KERN_NO_SPACE) {
-        // Overlapping existing mapping — deallocate first, then retry
-        LOG_TRACE("MapPhysical(0x%llx): deallocating existing page", address);
-        mach_vm_deallocate(mach_task_self(), abs_addr, size);
-        kr = mach_vm_map(
-            mach_task_self(), &abs_addr, size, 0,
-            VM_FLAGS_FIXED,
-            MEMORY_OBJECT_NULL, 0, FALSE,
-            VM_PROT_READ | VM_PROT_WRITE,
-            VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE,
-            VM_INHERIT_NONE);
-    }
-
     if (kr != KERN_SUCCESS) {
-        LOG_ERROR("MapPhysical(0x%llx, %zu): mach_vm_map failed: kr=%d",
-                  address, size, kr);
+        LOG_ERROR("MapPhysical(0x%llx, %zu): mach_vm_map failed at 0x%llx+%zu: kr=%d",
+                  address, size, map_addr, map_size, kr);
         return Result::OutOfMemory;
     }
+
+    // abs_addr 更新为映射基址 + 页内偏移（与 Pointer() 计算一致）
+    abs_addr = map_addr + page_off;
 
     // Copy initial data while writable
     if (data) {

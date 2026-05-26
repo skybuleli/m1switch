@@ -129,8 +129,13 @@ bool Test_FullPipeline() {
         printf("  FAIL: rasterizer not enabled\n");
         return false;
     }
-    if (state.draw_arrays_count != 123) {
-        printf("  FAIL: draw count = %u (expected 123)\n", state.draw_arrays_count);
+    auto draws = tracker.ConsumeDraws();
+    if (draws.size() != 1) {
+        printf("  FAIL: draw queue size = %zu (expected 1)\n", draws.size());
+        return false;
+    }
+    if (draws[0].arrays_count != 123) {
+        printf("  FAIL: draw count = %u (expected 123)\n", draws[0].arrays_count);
         return false;
     }
     if (!tracker.IsDirty()) {

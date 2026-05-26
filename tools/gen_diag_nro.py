@@ -167,19 +167,18 @@ def build_minimal_test():
 
 
 def build_heap_test():
-    """堆测试: svcSetHeapSize + 写入 + svcExitProcess"""
+    """堆测试: svcSetHeapSize + STR + LDR + svcExitProcess (完整堆通路)"""
     code = []
     code.extend(mov64(0, 0x100000))       # X0 = 1 MiB
     code.append(svc(0x00))                 # svcSetHeapSize
-    # X0 = heap base, 保存
+    # X0 = heap base, 保存到 X20
     code.append(0xAA0003F4)               # MOV X20, X0
-    # 写入值到堆
-    code.extend(mov64(1, 0xDEADBEEF))     # 标记值
-    code.append(0xF9000000 | (0 << 10) | (20 << 5))  # STR X1, [X20]
-    # 读回验证
+    # 写入值到堆 (STR X1, [X20])
+    code.extend(mov64(1, 0xDEADBEEF))     # X1 = 0xDEADBEEF
+    code.append(0xF9000000 | (1) | (0 << 10) | (20 << 5))  # STR X1, [X20]
+    # 读回 (LDR X0, [X20])
     code.append(0xF9400000 | (0 << 10) | (20 << 5))  # LDR X0, [X20]
-    # svcExitProcess(0)
-    code.append(movz(0, 0, 0))
+    # svcExitProcess
     code.append(svc(0x07))
     code.append(b_inf())
     return code

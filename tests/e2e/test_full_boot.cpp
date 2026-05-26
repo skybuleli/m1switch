@@ -133,15 +133,20 @@ TEST(E2E_FullBoot) {
     LOG_INFO("NRO loaded: entry=0x%llx, %zu segments",
              info.entry_point, info.segments.size());
 
-    // ── 4. Patch SVCs ──────────────────────────────
+    // ── 4. 验证 SVC 已被加载器自动打补丁 ──────────
+    // NroLoader::LoadFromBuffer 内部已调用 PatchSVCs 并将 .text 保护为 RX
+    // 这里验证 SVC #0（偏移 4 字节处）已被替换为 BRK
     auto& seg = info.segments[0];
     u8* text = memory.Pointer(seg.guest_address);
     CHECK(text != nullptr);
-    std::vector<std::pair<u32,u32>> svc_map;
-    r = NativeExec::PatchSVCs(text, seg.size, svc_map);
-    CHECK(!Failed(r));
-    CHECK(svc_map.size() >= 1);
-    LOG_INFO("Patched %zu SVCs", svc_map.size());
+
+    // 读取偏移 4 处的已打补丁指令（SVC #0x07 应被替换为 BRK #0x1007）
+    u32 patched_svc;
+    std::memcpy(&patched_svc, text + 4, sizeof(patched_svc));
+    // SVC #0x07 原始 = 0xD4000001 | (0x07 << 5) = 0xD40000E1
+    // 补丁后 = BRK #0x1007 = 0xD4200000 | (0x1007 << 5) = 0xD42200E0
+    CHECK_EQ(patched_svc, (u32)0xD42200E0);
+    LOG_INFO("SVC 补丁验证通过: 偏移4指令 = 0x%08x (应为 BRK #0x1007)", patched_svc);
 
     // ── 5. Stack ───────────────────────────────────
     memory.SetupStack(0x100000);
@@ -213,15 +218,14 @@ TEST(E2E_DebuggerBreakpoint) {
     auto& seg = info.segments[0];
     u8* text = memory.Pointer(seg.guest_address);
     CHECK(text != nullptr);
-    std::vector<std::pair<u32,u32>> svc_map;
-    NativeExec::PatchSVCs(text, seg.size, svc_map);
+    // 加载器已自动完成 SVC 补丁，无需再次调用 PatchSVCs
     memory.SetupStack(0x100000);
 
     SvcTable_Init();
     auto& dbg = GlobalDebugger();
     dbg.SetMemory(&memory);
 
-    // 在入口地址设置断点
+    // 在入口地址设置断点（使用主机绝对地址，匹配信号处理器的 PC）
     g_bp_addr = memory.BaseAddress() + info.entry_point;
     dbg.SetBreakpoint(g_bp_addr);
     CHECK(dbg.HasBreakpoint(g_bp_addr));

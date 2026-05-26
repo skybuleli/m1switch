@@ -6,7 +6,12 @@
 #include "services/Ipc.h"
 #include "debug/TraceEngine.h"
 #include <mach/mach_time.h>
+#include <algorithm>
+#include <cstring>
 #include <ctime>
+
+std::atomic<bool> g_guest_exited{false};
+std::atomic<bool> g_guest_crashed{false};
 
 static Memory* g_mem = nullptr;
 void SvcHandlers_SetMemory(Memory* mem) { g_mem = mem; }
@@ -43,15 +48,31 @@ static u64 Arg(const GuestThreadState* s, int n) { return s->x[n]; }
 static void Ret(GuestThreadState* s, u64 v) { s->x[0] = v; }
 #define SVC(name) static void name(u32 num, GuestThreadState* state)
 
+static u64 ToGuestAddress(u64 ptr) {
+    if (!g_mem) return ptr;
+    u64 mem_base = g_mem->BaseAddress();
+    if (ptr >= mem_base && ptr < mem_base + Memory::ADDR_SPACE_SIZE) {
+        return ptr - mem_base;
+    }
+    return ptr;
+}
+
 // ═══════════════════════════════════════════════════════════
 // Memory Management (0x00-0x04)
 // ═══════════════════════════════════════════════════════════
 
 SVC(SvcSetHeapSize) {
-    u64 size = Arg(state, 1);
-    LOG_DEBUG("SetHeapSize(0x%llx)", size);
-    if (g_mem && size > 0) { g_mem->SetHeapSize(size); Ret(state, g_mem->GetHeapBase()); }
-    else Ret(state, 0);
+    u64 size = Arg(state, 0);
+    LOG_INFO("SvcSetHeapSize(0x%llx) called", size);
+    if (g_mem && size > 0) { 
+        Result r = g_mem->SetHeapSize(size); 
+        u64 base = g_mem->GetHeapBase();
+        LOG_INFO("SvcSetHeapSize: result=%d base=0x%llx", (int)r, base);
+        Ret(state, base);
+    } else {
+        LOG_INFO("SvcSetHeapSize: skipping (size=%llx)", size);
+        Ret(state, 0);
+    }
 }
 
 SVC(SvcSetMemoryAttribute) {
@@ -107,7 +128,8 @@ SVC(SvcUnmapTransferMemory) { LOG_TRACE("UnmapTransferMemory"); Ret(state, 0); }
 
 SVC(SvcExitProcess) {
     LOG_INFO("ExitProcess(%llu)", Arg(state, 0));
-    Ret(state, 0);
+    g_guest_exited.store(true);
+    // 不在此处调用 pthread_exit — 由 TrapHandler 通过 siglongjmp 返回
 }
 
 SVC(SvcCreateThread) {
@@ -187,7 +209,7 @@ SVC(SvcStartThread) {
 
         TRACE_THREAD(THREAD_START, (u64)t->thread_id, t->entry_point);
 
-        NativeExec::RunGuest(t->entry_point, t->stack_top, t->tls_base);
+        NativeExec::RunGuest(t->entry_point, t->stack_top, t->tls_base, t->arg, 0, 0);
 
         t->running.store(false);
         t->MarkFinished();
@@ -202,7 +224,7 @@ SVC(SvcStartThread) {
 
 SVC(SvcExitThread) {
     LOG_INFO("ExitThread");
-    Ret(state, 0);
+    pthread_exit(nullptr);
 }
 
 SVC(SvcGetThreadPriority) {
@@ -421,19 +443,44 @@ SVC(SvcSignalProcessWideKey) { LOG_TRACE("SignalProcessWideKey"); Ret(state, 0);
 // ═══════════════════════════════════════════════════════════
 
 SVC(SvcConnectToNamedPort) {
-    u64 name_ptr = Arg(state, 0);
+    u64 raw_x1 = Arg(state, 1);
+    u64 out_ptr = Arg(state, 0);
+    u64 name_ptr = ToGuestAddress(raw_x1);
     char name[256] = {};
-    if (g_mem && name_ptr > 0) {
+    if (g_mem && name_ptr > 0 && name_ptr < Memory::ADDR_SPACE_SIZE) {
+        // 调试: 输出原始 x1 和名字字符串 hex
+        if (name_ptr >= 0x40000000 && name_ptr < 0x50000000) {
+            u8 dbg[16] = {};
+            for (int i = 0; i < 16; i++) {
+                g_mem->Read(name_ptr + i, &dbg[i]);
+            }
+            LOG_DEBUG("ConnectToNamedPort raw_x1=0x%llx name_ptr=0x%llx hex=%02x%02x%02x%02x%02x%02x%02x%02x...",
+                     raw_x1, name_ptr,
+                     dbg[0],dbg[1],dbg[2],dbg[3],dbg[4],dbg[5],dbg[6],dbg[7]);
+        }
         for (int i = 0; i < 255; i++) {
-            u8 c;
-            if (Failed(g_mem->Read(name_ptr + i, &c))) break;
+            u8 c = 0;
+            Result r = g_mem->Read(name_ptr + i, &c);
+            if (Failed(r)) { LOG_WARN("Read failed at name_ptr+%d", i); break; }
             name[i] = (char)c;
             if (c == '\0') break;
+            if (i == 0 && c != 's') {
+                LOG_WARN("First byte of name is 0x%02x (expected 's'=0x73)", c);
+            }
         }
+    } else {
+        LOG_WARN("ConnectToNamedPort: bad name_ptr raw_x1=0x%llx name_ptr=0x%llx g_mem=%p",
+                 raw_x1, name_ptr, (void*)g_mem);
     }
     u32 session = IpcManager::Instance().Connect(name);
     LOG_DEBUG("ConnectToNamedPort('%s') → session=0x%x", name, session);
-    Ret(state, session);
+    // Horizon OS 内核返回: x0 = Result, x1 = session_handle
+    // libnx wrapper 从 x1 读取句柄并存入 *out_ptr
+    if (g_mem && out_ptr != 0) {
+        g_mem->Write(ToGuestAddress(out_ptr), session);
+    }
+    state->x[1] = session;  // 关键: libnx 依赖 x1 返回句柄
+    Ret(state, 0);          // x0 = 0 (Success)
 }
 
 SVC(SvcSendSyncRequest) {
@@ -529,19 +576,52 @@ SVC(SvcGetSystemTick) {
 // ═══════════════════════════════════════════════════════════
 
 SVC(SvcBreak) {
-    LOG_WARN("Break(0x%llx)", Arg(state, 0));
+    u32 reason = (u32)Arg(state, 0);
+    u64 address = Arg(state, 1);
+    u64 size = Arg(state, 2);
+    LOG_ERROR("Break(reason=0x%x, address=0x%llx, size=0x%llx)", reason, address, size);
+
+    if (g_mem && address != 0 && size > 0 && size <= 0x100) {
+        u64 guest_addr = address;
+        u64 mem_base = g_mem->BaseAddress();
+        if (address >= mem_base && address < mem_base + Memory::ADDR_SPACE_SIZE) {
+            guest_addr = address - mem_base;
+        }
+
+        if (size == 4) {
+            u32 value = 0;
+            if (!Failed(g_mem->Read(guest_addr, &value))) {
+                LOG_ERROR("Break payload u32=0x%08x", value);
+            }
+        }
+    }
+
+    g_guest_crashed.store(true);
+    g_guest_exited.store(true);
     Ret(state, 0);
 }
 
 SVC(SvcOutputDebugString) {
     u64 str_ptr = Arg(state, 0);
     u64 str_len = Arg(state, 1);
+    LOG_INFO("OutputDebugString(ptr=0x%llx, len=%llu)", str_ptr, str_len);
     if (g_mem && str_ptr > 0 && str_len < 4096) {
         char buf[4096];
-        for (u64 i = 0; i < str_len && i < sizeof(buf)-1; i++)
-            g_mem->Read(str_ptr + i, (u8*)&buf[i]);
-        buf[str_len < sizeof(buf) ? str_len : sizeof(buf)-1] = '\0';
-        LOG_INFO("Guest: %s", buf);
+        u64 guest_ptr = str_ptr;
+        u64 mem_base = g_mem->BaseAddress();
+        if (str_ptr >= mem_base && str_ptr < mem_base + Memory::ADDR_SPACE_SIZE) {
+            guest_ptr = str_ptr - mem_base;
+        }
+
+        u8* ptr = g_mem->Pointer(guest_ptr);
+        if (ptr) {
+            u64 n = std::min<u64>(str_len, sizeof(buf) - 1);
+            std::memcpy(buf, ptr, n);
+            buf[n] = '\0';
+            LOG_INFO("Guest: %s", buf);
+        } else {
+            LOG_WARN("OutputDebugString: invalid pointer 0x%llx", str_ptr);
+        }
     }
     Ret(state, 0);
 }
@@ -800,32 +880,32 @@ void SvcHandlers_RegisterAll() {
     // IPC + Timer
     SvcTable_Register(0x1E, SvcGetSystemTick);
     SvcTable_Register(0x1F, SvcConnectToNamedPort);
-    SvcTable_Register(0x20, SvcSendSyncRequest);
+    SvcTable_Register(0x20, SvcSendSyncRequest); // SendSyncRequestLight
 
     // More IPC
-    SvcTable_Register(0x21, SvcSendSyncRequestWithUserBuffer);
-    SvcTable_Register(0x22, SvcSendAsyncRequest);
-    SvcTable_Register(0x23, SvcGetProcessId);
-    SvcTable_Register(0x24, SvcGetThreadId);
-    SvcTable_Register(0x25, SvcBreak);
-    SvcTable_Register(0x26, SvcOutputDebugString);
-    SvcTable_Register(0x27, SvcReturnFromException);
-    SvcTable_Register(0x28, SvcGetInfo);
-    SvcTable_Register(0x29, SvcFlushEntireDataCache);
-    SvcTable_Register(0x2A, SvcFlushDataCache);
-    SvcTable_Register(0x2B, SvcGetResourceLimitLimitValue);
-    SvcTable_Register(0x2C, SvcGetResourceLimitCurrentValue);
-    SvcTable_Register(0x2D, SvcSetThreadActivity);
-    SvcTable_Register(0x2E, SvcGetThreadContext3);
-    SvcTable_Register(0x2F, SvcCreateInterruptEvent);
-    SvcTable_Register(0x30, SvcQueryPhysicalAddress);
-    SvcTable_Register(0x31, SvcQueryIoMapping);
-    SvcTable_Register(0x32, SvcCreateDeviceAddressSpace);
-    SvcTable_Register(0x33, SvcAttachDeviceAddressSpace);
-    SvcTable_Register(0x34, SvcDetachDeviceAddressSpace);
-    SvcTable_Register(0x35, SvcMapDeviceAddressSpaceByForce);
-    SvcTable_Register(0x36, SvcMapDeviceAddressSpaceAligned);
-    SvcTable_Register(0x37, SvcSetKernelMemoryPermission);
+    SvcTable_Register(0x21, SvcSendSyncRequest);
+    SvcTable_Register(0x22, SvcSendSyncRequestWithUserBuffer);
+    SvcTable_Register(0x23, SvcSendAsyncRequest);
+    SvcTable_Register(0x24, SvcGetProcessId);
+    SvcTable_Register(0x25, SvcGetThreadId);
+    SvcTable_Register(0x26, SvcBreak);
+    SvcTable_Register(0x27, SvcOutputDebugString);
+    SvcTable_Register(0x28, SvcReturnFromException);
+    SvcTable_Register(0x29, SvcGetInfo);
+    SvcTable_Register(0x2A, SvcFlushEntireDataCache);
+    SvcTable_Register(0x2B, SvcFlushDataCache);
+    SvcTable_Register(0x2C, SvcMapPhysicalMemory);
+    SvcTable_Register(0x2D, SvcUnmapPhysicalMemory);
+    SvcTable_Register(0x2E, SvcGetThreadContext3); // GetDebugFutureThreadInfo placeholder
+    SvcTable_Register(0x2F, SvcGetThreadContext3); // GetLastThreadInfo placeholder
+    SvcTable_Register(0x30, SvcGetResourceLimitLimitValue);
+    SvcTable_Register(0x31, SvcGetResourceLimitCurrentValue);
+    SvcTable_Register(0x32, SvcSetThreadActivity);
+    SvcTable_Register(0x33, SvcGetThreadContext3);
+    SvcTable_Register(0x34, SvcWaitSynchronization); // WaitForAddress placeholder
+    SvcTable_Register(0x35, SvcSignalEvent); // SignalToAddress placeholder
+    SvcTable_Register(0x36, SvcFlushEntireDataCache); // SynchronizePreemptionState placeholder
+    SvcTable_Register(0x37, SvcGetResourceLimitCurrentValue);
     SvcTable_Register(0x38, SvcSetUserResourceLimit);
 
     // Session/Port

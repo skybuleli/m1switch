@@ -35,9 +35,11 @@
     {
       "name": "Headless Smoke (test NRO)",
       "binary": "src/m1switch_headless",
+      "args": ["test_exit.nro", "--timeout=5"],
       "timeout": 10,
       "checks": [
-        {"type": "exit_zero"}
+        {"type": "exit_zero"},
+        {"type": "contains", "pattern": "GUEST EXITED NORMALLY"}
       ]
     }
   ]

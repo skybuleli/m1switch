@@ -42,13 +42,16 @@ static u64 Read64(const u8* buf, size_t sz, u64 off) {
     if (off + 8 > sz) return 0;
     return (u64)buf[off] | ((u64)buf[off+1]<<8) |
            ((u64)buf[off+2]<<16) | ((u64)buf[off+3]<<24) |
-           ((u64)buf[off+4]<<24) | ((u64)buf[off+5]<<40) |
+           ((u64)buf[off+4]<<32) | ((u64)buf[off+5]<<40) |
            ((u64)buf[off+6]<<48) | ((u64)buf[off+7]<<56);
 }
 
 static u64 AlignUp(u64 val, u64 align) {
     return (val + align - 1) & ~(align - 1);
 }
+
+// Apple Silicon 硬件页面大小为 16K; 所有 mach_vm_map 地址必须 16K 对齐
+static constexpr u64 HOST_PAGE = 0x4000;
 
 NroLoader::NroLoader(Memory& memory) : memory_(memory) {}
 
@@ -148,6 +151,7 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
     struct DynInfo {
         u64 rela_off = 0, rela_sz = 0, rela_ent = 0;
         u64 symtab_off = 0, strtab_off = 0, strtab_sz = 0;
+        s64 init_func = -1;
     } dyn;
 
     if (dyn_off > 0) {
@@ -164,6 +168,7 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
                 s64 tag = (s64)Read64(buffer.data(), buffer.size(), dyn_abs + i*16);
                 u64 val = Read64(buffer.data(), buffer.size(), dyn_abs + i*16 + 8);
                 switch (tag) {
+                case DT_INIT:    dyn.init_func  = (s64)val; break;
                 case DT_RELA:    dyn.rela_off   = val; break;
                 case DT_RELASZ:  dyn.rela_sz    = val; break;
                 case DT_RELAENT: dyn.rela_ent   = val; break;
@@ -171,18 +176,25 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
                 case DT_STRSZ:    dyn.strtab_sz  = val; break;
                 }
             }
+            LOG_INFO("DYN: rela=0x%llx relasz=0x%llx relaent=0x%llx symtab=0x%llx strtab=0x%llx",
+                     dyn.rela_off, dyn.rela_sz, dyn.rela_ent,
+                     dyn.symtab_off, dyn.strtab_off);
         }
     }
 
     // ── Map segments (all before relocations) ─────────────
+    // 重要: Apple Silicon 使用 16K 硬件页。
+    // 段地址必须与原始 NRO 布局一致（PC-relative ADRP 引用依赖段间相对位置不变）。
+    // 但 mach_vm_map 要求地址 16K 对齐，所以将映射大小上取整到 16K，
+    // 并允许后续映射与前一映射的末尾 16K 填充区域重叠（使用 VM_FLAGS_OVERWRITE）。
     u64 text_addr     = NRO_TEXT_BASE;
-    u64 text_page_sz  = AlignUp(static_cast<u64>(text_size), 0x1000);
-    u64 rodata_addr   = text_addr + text_page_sz;
-    u64 rodata_page_sz = AlignUp(static_cast<u64>(rodata_size), 0x1000);
-    u64 data_addr     = rodata_addr + rodata_page_sz;
-    u64 data_page_sz  = AlignUp(static_cast<u64>(data_size), 0x1000);
-    u64 bss_addr      = data_addr + data_page_sz;
-    u64 bss_page_sz   = AlignUp(static_cast<u64>(bss_size), 0x1000);
+    u64 text_page_sz  = AlignUp(static_cast<u64>(text_size), HOST_PAGE);
+    u64 rodata_addr   = NRO_TEXT_BASE + static_cast<u64>(rodata_start);
+    u64 rodata_page_sz = AlignUp(static_cast<u64>(rodata_size), HOST_PAGE);
+    u64 data_addr     = NRO_TEXT_BASE + static_cast<u64>(data_start);
+    u64 data_page_sz  = AlignUp(static_cast<u64>(data_size), HOST_PAGE);
+    u64 bss_addr      = AlignUp(data_addr + data_page_sz, HOST_PAGE);
+    u64 bss_page_sz   = AlignUp(static_cast<u64>(bss_size), HOST_PAGE);
 
     // 1. .text → RW (will switch to RX after patching)
     {
@@ -226,6 +238,8 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
     }
 
     // ── Apply relocations (all segments are now mapped) ──
+    // Standard libnx NROs (text_start == 0) run crt0 first, and crt0 applies
+    // the RELATIVE relocation table itself before calling user code.
     if (dyn.rela_off > 0 && dyn.rela_sz > 0 && dyn.rela_ent >= 24) {
         u64 rela_file_off = text_start + dyn.rela_off;
         u64 nrelas = dyn.rela_sz / dyn.rela_ent;
@@ -249,7 +263,7 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
 
             switch (type) {
             case R_AARCH64_RELATIVE: {
-                u64 val = NRO_TEXT_BASE + r_add;
+                u64 val = memory_.BaseAddress() + NRO_TEXT_BASE + r_add;
                 memory_.Write(patch_addr, val);
                 break;
             }
@@ -257,7 +271,8 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
             case R_AARCH64_GLOB_DAT: {
                 if (sym_file_off && sym < nsyms) {
                     u64 sym_off = sym_file_off + sym * 24;
-                    u64 s_val = Read64(buffer.data(), buffer.size(), sym_off + 8);
+                    u64 s_val = memory_.BaseAddress() + NRO_TEXT_BASE +
+                                Read64(buffer.data(), buffer.size(), sym_off + 8);
                     if (type == R_AARCH64_ABS64) s_val += r_add;
                     memory_.Write(patch_addr, s_val);
                 }
@@ -268,12 +283,35 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         LOG_INFO("Applied %llu relocations", (u64)nrelas);
     }
 
+    if (text_start == 0) {
+        u8* text_ptr = memory_.Pointer(text_addr);
+        if (text_ptr) {
+            u32 inst = 0;
+            std::memcpy(&inst, text_ptr + 0xD8, sizeof(inst));
+            if ((inst & 0xFC000000u) == 0x94000000u) {
+                constexpr u32 NOP = 0xD503201F;
+                std::memcpy(text_ptr + 0xD8, &NOP, sizeof(NOP));
+                __builtin___clear_cache(reinterpret_cast<char*>(text_ptr + 0xD8),
+                                        reinterpret_cast<char*>(text_ptr + 0xDC));
+                LOG_INFO("Patched libnx crt0 relocation call at +0xD8");
+            } else {
+                LOG_WARN("libnx crt0 relocation call not found at +0xD8 (inst=0x%08x)", inst);
+            }
+        }
+    }
+
     // ── Protect segments ─────────────────────────────
     // .text → RX (no more writes)
-    memory_.Protect(text_addr, text_page_sz, Memory::Permission::RX);
+    {
+        Result r = memory_.Protect(text_addr, text_page_sz, Memory::Permission::RX);
+        if (Failed(r)) LOG_WARN("Protect .text RX failed: %d", (int)r);
+        else LOG_INFO("Protected .text as RX (%llu bytes)", text_page_sz);
+    }
     // .rodata → R (no more writes after relocations)
     if (rodata_size > 0) {
-        memory_.Protect(rodata_addr, rodata_page_sz, Memory::Permission::R);
+        Result r = memory_.Protect(rodata_addr, rodata_page_sz, Memory::Permission::R);
+        if (Failed(r)) LOG_WARN("Protect .rodata R failed: %d", (int)r);
+        else LOG_INFO("Protected .rodata as R (%llu bytes)", rodata_page_sz);
     }
 
     // ── Record segments in info ──────────────────────────
@@ -284,12 +322,21 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
     if (data_size > 0)
         info.segments.push_back({data_start, data_size, data_addr, Memory::Permission::RW});
 
-    // NRO entry point: standard libnx convention is offset 0x100.
-    // The first 0x100 bytes contain the NRO0 header + build ID;
-    // actual executable code (CRT0 startup) starts at offset 0x100.
-    // DT_INIT may point to a different init function, but the entry
-    // point is always at offset 0x100 for homebrew NROs.
-    info.entry_point = NRO_TEXT_BASE + 0x100;
-    LOG_INFO("Entry: 0x%llx (%zu segments)", info.entry_point, info.segments.size());
+    // NRO entry point:
+    // 标准 libnx NRO (text_start=0): image base starts with the crt0 branch.
+    // DT_INIT is an initializer routine for crt0 to call, not the process entry.
+    // 自定义 NRO (text_start>0): 代码从 text 基址开始（无 header 嵌入).
+    if (text_start == 0) {
+        info.entry_point = text_addr;
+        if (dyn.init_func >= 0) {
+            LOG_INFO("Entry: 0x%llx (libnx image base, DT_INIT=0x%llx)",
+                     info.entry_point, (u64)dyn.init_func);
+        } else {
+            LOG_INFO("Entry: 0x%llx (libnx image base)", info.entry_point);
+        }
+    } else {
+        info.entry_point = text_addr;
+        LOG_INFO("Entry: 0x%llx (text_addr, text_start=0x%x)", info.entry_point, text_start);
+    }
     return Result::Success;
 }

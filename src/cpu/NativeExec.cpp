@@ -1,10 +1,16 @@
 #include "cpu/NativeExec.h"
+#include "kernel/SvcTable.h"
 #include <cstring>
+#include <csetjmp>
 #include <mach/mach.h>
 
-extern "C" void GuestTrampoline(u64 entry_point, u64 stack_top);
+extern "C" void GuestTrampoline(u64 entry_point, u64 stack_top,
+                                u64 arg0, u64 arg1, u64 arg2);
 extern "C" void GuestTrampoline_Minimal(u64 entry_point, u64 stack_top);
 extern "C" void GuestTrampoline_NoZero(u64 entry_point, u64 stack_top);
+
+thread_local sigjmp_buf g_guest_exit_jmp_buf;
+thread_local bool g_guest_exit_jmp_valid = false;
 
 Result NativeExec::PatchSVCs(u8* code, u64 size,
                               std::vector<std::pair<u32, u32>>& out_map) {
@@ -28,12 +34,20 @@ Result NativeExec::PatchSVCs(u8* code, u64 size,
     return Result::Success;
 }
 
-void NativeExec::RunGuest(u64 abs_entry, u64 abs_stack, u64 tls_base) {
+void NativeExec::RunGuest(u64 abs_entry, u64 abs_stack, u64 tls_base,
+                          u64 arg0, u64 arg1, u64 arg2) {
     LOG_INFO("Guest: PC=0x%llx SP=0x%llx", abs_entry, abs_stack);
 
-    GuestTrampoline(abs_entry, abs_stack);
+    g_guest_exit_jmp_valid = true;
+    if (sigsetjmp(g_guest_exit_jmp_buf, 1) != 0) {
+        LOG_INFO("Guest exited via SVC longjmp");
+        return;
+    }
+
+    GuestTrampoline(abs_entry, abs_stack, arg0, arg1, arg2);
 
     LOG_ERROR("GuestTrampoline returned — should not happen");
+    g_guest_exit_jmp_valid = false;
 }
 
 // ── Diagnostic variants for crash isolation ────────────────

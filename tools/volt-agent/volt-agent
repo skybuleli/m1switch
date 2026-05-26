@@ -54,15 +54,25 @@ def build_project(target: str = "all") -> bool:
 
 
 # ── Run test binary ───────────────────────────────────────
-def run_test_binary(bin_path: Path, timeout: int) -> dict:
+def run_test_binary(bin_path: Path, timeout: int, args: list | None = None) -> dict:
     if not bin_path.exists():
         log(f"Binary not found: {bin_path}")
         return {"passed": False, "error": "binary not found"}
 
+    cmd = [str(bin_path)]
+    for arg in args or []:
+        arg_path = Path(arg)
+        if not arg_path.is_absolute() and (
+            "/" in arg or arg.endswith((".nro", ".elf", ".nso", ".npdm"))
+        ):
+            cmd.append(str(REPO_ROOT / arg))
+        else:
+            cmd.append(str(arg))
+
     t0 = time.time()
     try:
         r = subprocess.run(
-            [str(bin_path)],
+            cmd,
             capture_output=True, text=True,
             timeout=timeout,
         )
@@ -73,6 +83,7 @@ def run_test_binary(bin_path: Path, timeout: int) -> dict:
             "stdout": r.stdout,
             "stderr": r.stderr,
             "elapsed_sec": round(elapsed, 2),
+            "command": cmd,
         }
     except subprocess.TimeoutExpired:
         elapsed = time.time() - t0
@@ -122,9 +133,10 @@ def run_manifest(manifest: dict, skip_build: bool = False) -> list:
         bin_path = BUILD_DIR / bin_rel
         timeout = test.get("timeout", 10)
         checks = test.get("checks", [])
+        args = test.get("args", [])
 
         log(f"Running test: {name} ({bin_rel})")
-        result = run_test_binary(bin_path, timeout)
+        result = run_test_binary(bin_path, timeout, args)
         result["name"] = name
         result["validated"] = validate_output(result, checks)
         status = "✅" if result.get("validated") else "❌"
