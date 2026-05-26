@@ -18,6 +18,7 @@ static std::unordered_map<std::string, NSImage*> g_cover_cache;
     self.view.layer.shadowOpacity = 0.3;
     self.view.layer.shadowRadius = 4;
     self.view.layer.shadowOffset = CGSizeMake(0, 2);
+    [self setup];
 }
 
 - (void)setup {
