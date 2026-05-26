@@ -162,11 +162,17 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
     hex[64] = '\0';
     info.build_id = hex;
 
-    u32 text_start   = header_off_ + header.text_start;
+    // text_start from NRO header is an ABSOLUTE file offset (points to where .text begins
+    // in the NRO file. The NRO0 header starts at file offset 0x10, but the text_start field
+    // in the header references the ENTIRE NRO file, not an offset relative to the header.
+    // E.g., text_start=0x110 → the .text section starts at file offset 0x110.
+    // All segment offsets in the NRO0 header are ABSOLUTE file offsets.
+    // text_start was already fixed — now align rodata and data to match.
+    u32 text_start   = header.text_start;
     u32 text_size    = header.text_size;
-    u32 rodata_start = header_off_ + header.rodata_start;
+    u32 rodata_start = header.rodata_start;
     u32 rodata_size  = header.rodata_size;
-    u32 data_start   = header_off_ + header.data_start;
+    u32 data_start   = header.data_start;
     u32 data_size    = header.data_size;
     u32 bss_size     = header.bss_size;
 
@@ -328,8 +334,10 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         }
     }
 
-    // Entry point
-    info.entry_point = NRO_TEXT_BASE + 0x100;
+    // Entry point: the .text segment is mapped at NRO_TEXT_BASE, so the entry is at its start.
+    // The NRO0 header and B-instruction preamble at the beginning of the file are NOT mapped.
+    // The first instruction of .text IS the entry point.
+    info.entry_point = NRO_TEXT_BASE;
     LOG_INFO("Entry: 0x%llx (%zu segments)", info.entry_point, info.segments.size());
     return Result::Success;
 }
