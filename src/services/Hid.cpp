@@ -359,6 +359,16 @@ private:
 static HidService g_hid_service;
 
 void ServiceHid_Init() {
+    // 延迟映射 HID 共享内存 —— HidService 构造函数在静态初始化期间执行，
+    // 此时 g_hid_memory 为 null，构造时的 MapPhysical 被跳过。
+    if (g_hid_memory) {
+        g_hid_memory->MapPhysical(HID_SHARED_MEM, HID_SHARED_SIZE,
+                                   Memory::Permission::RW);
+        auto* ptr = g_hid_memory->Pointer(HID_SHARED_MEM);
+        if (ptr) std::memset(ptr, 0, HID_SHARED_SIZE);
+        LOG_INFO("HID: 共享内存映射完成 @ 0x%llx (%u KB)",
+                 HID_SHARED_MEM, HID_SHARED_SIZE / 1024);
+    }
     LOG_INFO("HID 服务就绪 (Npad 共享内存布局)");
     (void)g_hid_service;
 }

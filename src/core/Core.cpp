@@ -64,6 +64,10 @@ void EmulatorCore::InitServices() {
     ServiceVi_SetMemory(&memory_);
     ServiceHid_SetMemory(&memory_);
 
+    // 预先映射 HID 共享内存，供 EmuScreenView::drawInMTKView 每帧写入输入状态
+    // （此时 g_hid_memory 已设置，但 HidService 构造函数在静态初始化时 g_hid_memory 为 null）
+    memory_.MapPhysical(0xE1000000, 0x40000, Memory::Permission::RW);
+
     tracker_.SetMemory(&memory_);
     ServiceNv_SetMemory(&memory_);
     ServiceNv_SetTracker(&tracker_);
