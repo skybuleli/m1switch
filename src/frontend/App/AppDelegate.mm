@@ -197,7 +197,14 @@
 
     if ([screen isValid]) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            [screen loadAndRunNRO:[path UTF8String]];
+            @try {
+                [screen loadAndRunNRO:[path UTF8String]];
+            } @catch (NSException* e) {
+                LOG_ERROR("Game thread exception: %s reason: %s",
+                          [[e name] UTF8String], [[e reason] UTF8String]);
+            } @catch (...) {
+                LOG_ERROR("Game thread unknown exception");
+            }
         });
     }
 }
@@ -265,6 +272,20 @@
 // ═══════════════════════════════════════════════════════════
 // Actions
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// Apple Event Handling
+// ═══════════════════════════════════════════════════════════
+- (BOOL)application:(NSApplication*)sender openFile:(NSString*)filename {
+    [self openGameAtPath:filename];
+    return YES;
+}
+
+- (void)application:(NSApplication*)sender openFiles:(NSArray<NSString*>*)filenames {
+    for (NSString* path in filenames) {
+        [self openGameAtPath:path];
+    }
+}
+
 - (void)openGameDialog:(id)sender {
     NSOpenPanel* panel = [NSOpenPanel openPanel];
     panel.allowedContentTypes = @[
@@ -284,7 +305,6 @@
 }
 
 - (void)togglePause:(id)sender {
-    // 找到当前活跃的 EmuScreenView
     NSWindow* keyW = [NSApp keyWindow];
     if (keyW && [keyW.contentView isKindOfClass:[NSSplitView class]]) {
         NSSplitView* sv = (NSSplitView*)keyW.contentView;

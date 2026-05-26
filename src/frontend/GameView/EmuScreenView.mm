@@ -253,22 +253,34 @@ double Gpu_GetFps(void);
     LOG_DEBUG("Drawable size: %.0fx%.0f", size.width, size.height);
 }
 
+- (void)setStatusLabel:(NSString*)text {
+    // 所有 UI 更新必须在主线程
+    if ([NSThread isMainThread]) {
+        _statusLabel.stringValue = text;
+    } else {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self->_statusLabel.stringValue = text;
+        });
+    }
+}
+
 - (void)loadAndRunNRO:(const char*)path {
     LOG_INFO("EmuScreenView: loading %s", path);
 
     if (!_core) { LOG_ERROR("No core to load game"); return; }
 
-    _statusLabel.stringValue = [NSString stringWithFormat:@"📂 Loading %s…",
-                                                         path ? strrchr(path, '/') ? strrchr(path, '/') + 1 : path : ""];
+    NSString* name = path ? [NSString stringWithUTF8String:
+        (strrchr(path, '/') ? strrchr(path, '/') + 1 : path)] : @"";
+    [self setStatusLabel:[NSString stringWithFormat:@"📂 Loading %@…", name]];
 
     Result r = _core->LoadGame(path);
     if (Failed(r)) {
         LOG_ERROR("Failed to load game: %d", (int)r);
-        _statusLabel.stringValue = @"❌ Load failed";
+        [self setStatusLabel:@"❌ Load failed"];
         return;
     }
 
-    _statusLabel.stringValue = @"▶ Running";
+    [self setStatusLabel:@"▶ Running"];
     _core->Run();
 }
 
