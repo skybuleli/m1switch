@@ -114,16 +114,26 @@ Result Memory::Protect(u64 address, size_t size, Permission perm) {
     return Result::Success;
 }
 
-// ── Heap ────────────────────────────────────────────────────
+// ── Heap (supports multiple resizes) ─────────────────────────
 Result Memory::SetHeapSize(u64 size) {
     u64 aligned = AlignUp(static_cast<u64>(size), PAGE_SIZE);
     if (aligned > 0x40000000) return Result::OutOfMemory;
+    if (aligned == heap_size_) return Result::Success;
 
     if (aligned > heap_size_) {
+        // Growing: unmap old first to avoid overlap, then map new
+        if (heap_size_ > 0)
+            UnmapPhysical(HEAP_BASE, heap_size_);
         Result r = MapPhysical(HEAP_BASE, aligned, Permission::RW);
-        if (Failed(r)) return r;
-    } else if (aligned < heap_size_) {
-        UnmapPhysical(heap_addr_ + aligned, heap_size_ - aligned);
+        if (Failed(r)) {
+            // Restore old size on failure
+            if (heap_size_ > 0)
+                MapPhysical(HEAP_BASE, heap_size_, Permission::RW);
+            return r;
+        }
+    } else {
+        // Shrinking: unmap the excess
+        UnmapPhysical(HEAP_BASE + aligned, heap_size_ - aligned);
     }
     heap_addr_ = HEAP_BASE;
     heap_size_ = aligned;
@@ -150,9 +160,64 @@ bool Memory::IsValid(u64 address) const {
     return address < ADDR_SPACE_SIZE;
 }
 
+void Memory::QueryRegion(u64 address, u64& out_base, u64& out_size,
+                          u32& out_type) const {
+    out_base = address;
+    out_size = 0x1000;
+    out_type = 3; // MemType_Unmapped
+
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    // Find the page containing this address (linear scan)
+    // unordered_map doesn't support upper_bound, so we iterate
+    typename std::unordered_map<u64, PageInfo>::const_iterator it = pages_.end();
+    for (auto p = pages_.begin(); p != pages_.end(); ++p) {
+        u64 pg_base = p->first;
+        u64 pg_end = pg_base + p->second.size;
+        if (address >= pg_base && address < pg_end) {
+            it = p;
+            break;
+        }
+    }
+
+    if (it != pages_.end()) {
+        u64 page_base = it->first;
+        u64 page_end = page_base + it->second.size;
+
+        if (address >= page_base && address < page_end) {
+            out_base = page_base;
+            out_size = it->second.size;
+            u32 flags = it->second.flags;
+
+            // Map flags to type:
+            // 0=Code (RX), 1=RW data, 2=RO data, 3=Unmapped, 4=Heap, 5=Stack
+            if (flags & (u32)Memory::Permission::X) {
+                out_type = 0; // Code
+            } else if (flags & (u32)Memory::Permission::W) {
+                out_type = 1; // RW data
+            } else if (flags & (u32)Memory::Permission::R) {
+                out_type = 2; // RO data
+            }
+
+            // Override for known special regions
+            if (page_base >= HEAP_BASE && page_base < HEAP_BASE + 0x40000000)
+                out_type = 4; // MemType_Heap
+            if (page_base >= STACK_BASE - 0x1000000 && page_base < STACK_BASE)
+                out_type = 5; // MemType_Stack
+        }
+    }
+}
+
 void Memory::DumpPages() const {
     std::lock_guard<std::mutex> lock(mutex_);
     LOG_INFO("--- Memory Pages (%zu entries) ---", pages_.size());
     for (auto& [addr, info] : pages_)
         LOG_INFO("  0x%08llx: %llu bytes, flags=0x%x", addr, info.size, info.flags);
+}
+
+// ── C API for debug panels ──────────────────────────────────
+extern "C" void Memory_DumpPages() {
+    // Can't access a specific Memory instance from here,
+    // so this is a no-op until we track it globally.
+    LOG_INFO("Memory_DumpPages: call via Memory::DumpPages on active instance");
 }

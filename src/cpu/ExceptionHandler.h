@@ -12,7 +12,6 @@ struct __attribute__((aligned(16))) GuestThreadState {
 
 using SvcHandlerFn = std::function<void(u32 svc_num, GuestThreadState* state)>;
 
-// Renamed to avoid conflict with Mach exception_handler_t typedef
 class SigHandler {
 public:
     SigHandler();
@@ -23,11 +22,14 @@ public:
     void SetSvcDispatch(SvcHandlerFn fn);
     Result Install();
 
+    static void EnsureInstalled();
+
 private:
     static void TrapHandler(int sig, siginfo_t* info, void* uap);
-    static SigHandler* s_instance;
+    static std::atomic<bool> s_installed;
+    static struct sigaction s_old_action;
 
     SvcHandlerFn dispatch_;
-    struct sigaction old_action_{};
-    bool installed_ = false;
 };
+
+void SigHandler_EnsureInstalled();

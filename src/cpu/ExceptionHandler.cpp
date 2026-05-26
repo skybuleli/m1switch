@@ -1,4 +1,5 @@
 #include "cpu/ExceptionHandler.h"
+#include "kernel/SvcTable.h"
 #include "common/Log.h"
 #include <mach/mach.h>
 #include <sys/ucontext.h>
@@ -7,13 +8,11 @@ constexpr u32 BRK_MASK = 0xFF00001F;
 constexpr u32 BRK_PATTERN = 0xD4200000;
 constexpr u32 BRK_TAG_BASE = 0x1000;
 
-SigHandler* SigHandler::s_instance = nullptr;
+std::atomic<bool> SigHandler::s_installed{false};
+struct sigaction SigHandler::s_old_action{};
 
-SigHandler::SigHandler() { if (!s_instance) s_instance = this; }
-SigHandler::~SigHandler() {
-    if (installed_) sigaction(SIGTRAP, &old_action_, nullptr);
-    if (s_instance == this) s_instance = nullptr;
-}
+SigHandler::SigHandler() {}
+SigHandler::~SigHandler() = default;
 
 void SigHandler::SetSvcDispatch(SvcHandlerFn fn) { dispatch_ = std::move(fn); }
 
@@ -39,8 +38,7 @@ void SigHandler::TrapHandler(int sig, siginfo_t* info, void* uap) {
         gs.sp = ss.__sp;
         gs.pc = pc;
 
-        if (s_instance && s_instance->dispatch_)
-            s_instance->dispatch_(svc, &gs);
+        SvcHandler_Dispatch(svc, &gs);
 
         for (int i = 0; i < 29; i++) ss.__x[i] = gs.x[i];
         ss.__fp = gs.x[29];
@@ -51,15 +49,26 @@ void SigHandler::TrapHandler(int sig, siginfo_t* info, void* uap) {
 }
 
 Result SigHandler::Install() {
+    EnsureInstalled();
+    return Result::Success;
+}
+
+void SigHandler::EnsureInstalled() {
+    bool expected = false;
+    if (!s_installed.compare_exchange_strong(expected, true)) return;
+
     struct sigaction sa = {};
     sa.sa_sigaction = TrapHandler;
     sa.sa_flags = SA_SIGINFO | SA_RESTART;
     sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGTRAP, &sa, &old_action_) != 0) {
+    if (sigaction(SIGTRAP, &sa, &s_old_action) != 0) {
         LOG_ERROR("sigaction(SIGTRAP) failed");
-        return Result::PermissionDenied;
+        s_installed.store(false);
+        return;
     }
-    installed_ = true;
-    LOG_DEBUG("SIGTRAP handler installed");
-    return Result::Success;
+    LOG_DEBUG("SIGTRAP handler installed (global, install-once)");
+}
+
+void SigHandler_EnsureInstalled() {
+    SigHandler::EnsureInstalled();
 }
