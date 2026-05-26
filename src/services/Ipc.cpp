@@ -1,6 +1,7 @@
 #include "services/Ipc.h"
 #include "common/Log.h"
 #include "debug/TraceEngine.h"
+#include "kernel/Kernel.h"
 #include <cstring>
 #include <algorithm>
 
@@ -156,18 +157,21 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     u32 num_copy_handles = 0;
     u32 num_move_handles = 0;
 
-    // 对于 SM::Initialize (cmd_id=0)，libnx 期望输出句柄
-    // 但由于句柄值需要有效内核对象支持，暂时不返回句柄，仅返回 data_words
-    if (false && session && session->service_name == "sm:" && cmd_id == 0) {
-        if (resp_remaining >= 4 + 4) { // SpecialHeader + 1 handle
+    // SM::Initialize 需要返回输出句柄（libnx 的 SfOutHandleAttr_HipcCopy）
+    // 使用内核句柄表创建一个通用对象并返回其句柄
+    if (session && session->service_name == "sm:" && cmd_id == 0) {
+        if (resp_remaining >= 4 + 4) {
+            // 创建内核对象（KEvent 最轻量，可以用于 svcCloseHandle）
+            KEvent* evt = new KEvent();
+            u32 kernel_handle = KernelHandleTable().Create(evt);
+            LOG_DEBUG("SM: created handle 0x%x for Initialize response", kernel_handle);
+
             shdr_pos = resp_ptr;
-            handle_pos = resp_ptr + 4; // after special header
+            handle_pos = resp_ptr + 4;
             num_copy_handles = 1;
-            // 写入特殊句柄值
-            u32 dummy_handle = 0xCAFE0002;
-            std::memcpy(handle_pos, &dummy_handle, sizeof(dummy_handle));
+            std::memcpy(handle_pos, &kernel_handle, sizeof(kernel_handle));
             resp_hdr.has_special_header = 1;
-            resp_ptr += 4 + 4; // special header + 1 handle
+            resp_ptr += 4 + 4;
             resp_remaining -= 4 + 4;
         }
     }
