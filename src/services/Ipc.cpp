@@ -125,15 +125,46 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // 如果只有一个 data_word（命令 ID），则没有额外的 raw_in 数据
     if (req_hdr.num_data_words <= 1) { raw_in = nullptr; raw_in_size = 0; }
 
-    // ── 构建 hipc 响应（空：仅 HipcHeader）───────────────
+    // ── 构建 hipc 响应 ──────────────────────────────────
     HipcHeader resp_hdr = {};
-    resp_hdr.type = 0;  // 成功
-    // 对于需要返回数据的命令，服务应填充 raw_out
-    u8* raw_out = response + sizeof(HipcHeader);
-    size_t raw_out_max = (*resp_size > sizeof(HipcHeader)) ? *resp_size - sizeof(HipcHeader) : 0;
+    resp_hdr.type = 0;
 
-    // 默认响应大小 = HipcHeader
-    *resp_size = sizeof(HipcHeader);
+    // 预留空间：HipcHeader + 可选的 SpecialHeader(4) + 最多 2 个句柄(8)
+    u8* resp_ptr = response;
+    size_t resp_remaining = *resp_size;
+
+    // 跳过 HipcHeader（稍后写入）
+    if (resp_remaining < sizeof(HipcHeader)) { *resp_size = 0; return 0; }
+    resp_ptr += sizeof(HipcHeader);
+    resp_remaining -= sizeof(HipcHeader);
+
+    // Special header + handle 区域（先预留，按需填充）
+    u8* shdr_pos = nullptr;
+    u8* handle_pos = nullptr;
+    u32 num_copy_handles = 0;
+    u32 num_move_handles = 0;
+
+    // 对于 SM::Initialize (cmd_id=0)，libnx 期望 1 个输出句柄
+    // 更通用的方案：支持在 raw_out 前面写入句柄
+    if (session && session->service_name == "sm:" && cmd_id == 0) {
+        if (resp_remaining >= 4 + 4) { // SpecialHeader + 1 handle
+            shdr_pos = resp_ptr;
+            handle_pos = resp_ptr + 4; // after special header
+            num_copy_handles = 1;
+            // 写入特殊句柄值
+            u32 dummy_handle = 0xCAFE0002;
+            std::memcpy(handle_pos, &dummy_handle, sizeof(dummy_handle));
+            resp_hdr.has_special_header = 1;
+            resp_ptr += 4 + 4; // special header + 1 handle
+            resp_remaining -= 4 + 4;
+        }
+    }
+
+    // raw_out 在 HipcHeader + 可选句柄之后
+    u8* raw_out = resp_ptr;
+    size_t raw_out_max = resp_remaining;
+
+    *resp_size = (size_t)(raw_out - response); // 基础大小 = header + 可选句柄
 
     if (!session->service) {
         LOG_TRACE("IPC: session 0x%x ('%s') no handler", session_handle, session->service_name.c_str());
@@ -147,11 +178,23 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     bool handled = session->service->HandleCommand(cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
 
     if (handled) {
-        // 如果服务有输出数据，将其作为 data_words 附加到 HipcHeader 后
-        if (raw_out_max > 0) {
-            *resp_size = sizeof(HipcHeader) + raw_out_max;
-            resp_hdr.num_data_words = (raw_out_max + 3) / 4;  // 按 u32 对齐
+        // 计算总响应大小
+        size_t header_size = (size_t)(raw_out - response); // headeroffset
+        size_t total_size = header_size + raw_out_max;
+        
+        // 写入 SpecialHeader（如果有句柄）
+        if (shdr_pos) {
+            HipcSpecialHeader shdr = {};
+            shdr.num_copy_handles = num_copy_handles;
+            shdr.num_move_handles = num_move_handles;
+            std::memcpy(shdr_pos, &shdr, sizeof(shdr));
+            // 设置 data_words 在句柄之后
+            resp_hdr.num_data_words = (raw_out_max + 3) / 4;
+        } else if (raw_out_max > 0) {
+            resp_hdr.num_data_words = (raw_out_max + 3) / 4;
         }
+        
+        *resp_size = total_size;
     } else {
         LOG_WARN("IPC: unhandled cmd %u for '%s'", cmd_id, session->service_name.c_str());
         // 返回错误——libnx 检查 SVC result (x0)，不是 hipc 头
