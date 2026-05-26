@@ -26,7 +26,11 @@ public:
         switch (cmd_id) {
         case 0: // Initialize
             LOG_DEBUG("SM: Initialize");
-            *out_sz = 0;
+            // Write result word (0 = success)
+            if (*out_sz >= 4) {
+                memset(out, 0, 4);
+                *out_sz = 4;
+            }
             return true;
 
         case 2: // GetService
