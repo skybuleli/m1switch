@@ -1,4 +1,5 @@
 #include "cpu/NativeExec.h"
+#include "cpu/ExceptionHandler.h"
 #include "kernel/SvcTable.h"
 #include <cstring>
 #include <csetjmp>
@@ -27,6 +28,9 @@ Result NativeExec::PatchSVCs(u8* code, u64 size,
             u32 brk_inst = BRK_BASE | ((brk_tag & 0xFFFF) << 5);
             std::memcpy(code + offset, &brk_inst, sizeof(brk_inst));
             out_map.push_back({brk_tag, svc_num});
+
+            // 填充 BRK 缓存（信号处理函数使用，无需 vm_read）
+            BrkCache_Add(reinterpret_cast<u64>(code) + offset, svc_num);
         }
     }
     __builtin___clear_cache(reinterpret_cast<char*>(code),
@@ -37,6 +41,12 @@ Result NativeExec::PatchSVCs(u8* code, u64 size,
 void NativeExec::RunGuest(u64 abs_entry, u64 abs_stack, u64 tls_base,
                           u64 arg0, u64 arg1, u64 arg2) {
     LOG_INFO("Guest: PC=0x%llx SP=0x%llx", abs_entry, abs_stack);
+
+    // 每线程信号栈 — 避免信号处理函数覆盖 guest 栈数据
+    Result sr = SetupGuestSignalStack();
+    if (Failed(sr)) {
+        LOG_ERROR("Failed to setup guest signal stack, continuing anyway...");
+    }
 
     g_guest_exit_jmp_valid = true;
     if (sigsetjmp(g_guest_exit_jmp_buf, 1) != 0) {

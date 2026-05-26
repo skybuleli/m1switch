@@ -10,8 +10,9 @@ struct __attribute__((aligned(16))) GuestThreadState {
     u64 pc;
 };
 
-// BRK 标签常量（也在 Debugger 中使用）
+// BRK 标签常量（也在 Debugger 和 NativeExec 中使用）
 constexpr u32 BRK_TAG_DEBUG = 0x6000;
+constexpr u32 BRK_TAG_BASE  = 0x1000;
 
 using SvcHandlerFn = std::function<void(u32 svc_num, GuestThreadState* state)>;
 
@@ -36,3 +37,12 @@ private:
 };
 
 void SigHandler_EnsureInstalled();
+
+// 设置当前线程的替代信号栈（避免信号处理函数覆盖 guest 栈数据）
+// 任何执行 guest 代码的线程必须在运行 guest 前调用此函数
+Result SetupGuestSignalStack();
+
+// BRK 地址缓存（信号处理函数零内存读取查询 SVC tag）
+void BrkCache_Add(u64 host_pc, u32 svc_num);
+void BrkCache_Clear();
+

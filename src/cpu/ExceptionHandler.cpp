@@ -6,6 +6,19 @@
 #include <sys/ucontext.h>
 #include <csetjmp>
 #include <array>
+#include <unordered_map>
+
+// BRK 地址 → SVC tag 缓存（信号处理函数零内存读取查询）
+// 由 PatchSVCs 的调用者在打补丁时填充
+std::unordered_map<u64, u32> g_brk_cache;
+
+// 由调用者填充 BRK 缓存
+void BrkCache_Add(u64 host_addr, u32 svc_num) {
+    u32 tag = BRK_TAG_BASE + svc_num;
+    g_brk_cache[host_addr] = tag;
+}
+
+void BrkCache_Clear() { g_brk_cache.clear(); }
 
 extern thread_local sigjmp_buf g_guest_exit_jmp_buf;
 extern thread_local bool g_guest_exit_jmp_valid;
@@ -13,7 +26,7 @@ extern std::atomic<bool> g_guest_crashed;
 
 constexpr u32 BRK_MASK = 0xFFE0001F;  // bits [31:24]=0xD4, [23:21]=000, [4:0]=00000
 constexpr u32 BRK_PATTERN = 0xD4200000;
-constexpr u32 BRK_TAG_BASE = 0x1000;
+// BRK_TAG_BASE 定义在 ExceptionHandler.h 中
 
 std::atomic<bool> SigHandler::s_installed{false};
 struct sigaction SigHandler::s_old_action{};
@@ -42,25 +55,21 @@ void SigHandler::TrapHandler(int sig, siginfo_t* info, void* uap) {
         pthread_exit(nullptr);
     }
 
-    u32 inst;
-    vm_size_t rsz;
-    kern_return_t kr = vm_read_overwrite(mach_task_self(), pc, sizeof(inst),
-                      reinterpret_cast<vm_address_t>(&inst), &rsz);
-
-    // 如果 vm_read 失败（Apple Silicon 上对 JIT/RX pages 可能发生），
-    // 使用 memcpy 直接读取
-    if (kr != KERN_SUCCESS) {
-        // 尝试直接 memcpy（页面可能 RX 但 vm_read 受限于代码签名策略）
-        LOG_WARN("vm_read_overwrite failed at PC=0x%llx kr=%d, trying memcpy", pc, kr);
-        inst = *reinterpret_cast<const u32*>(pc);
-        LOG_INFO("memcpy read: inst=0x%08x at PC=0x%llx", inst, pc);
+    // 从预缓存映射表查找 BRK tag，无需读取内存指令。
+    // Apple Silicon 上 vm_read_overwrite 对 RX 页面返回 KERN_MEMORY_FAILURE，
+    // 且 macOS ESR 中不包含 BRK 立即数。所以最可靠的方式是查缓存。
+    bool is_brk = false;
+    u32 brk_tag = 0;
+    auto cache_it = g_brk_cache.find(pc);
+    if (cache_it != g_brk_cache.end()) {
+        is_brk = true;
+        brk_tag = cache_it->second;
     }
 
-    bool is_brk = ((inst & BRK_MASK) == BRK_PATTERN);
-    LOG_INFO("TrapHandler: PC=0x%llx inst=0x%08x is_brk=%d", pc, inst, is_brk);
+    LOG_INFO("TrapHandler: PC=0x%llx is_brk=%d tag=0x%x", pc, is_brk, brk_tag);
 
     if (is_brk) {
-        u32 tag = (inst >> 5) & 0xFFFF;
+        u32 tag = brk_tag;
 
         // 调试器断点 (BRK 0x6000+)
         if ((tag & 0xF000) == BRK_TAG_DEBUG) {
@@ -120,17 +129,59 @@ Result SigHandler::Install() {
     return Result::Success;
 }
 
-// 专用信号栈（避免信号处理函数覆盖 guest 栈上的数据）
-static std::array<char, 32768> s_signal_stack;  // 32KB 信号栈
+// 主线程专用信号栈（32KB）
+static std::array<char, 32768> s_main_signal_stack;
+
+// 每线程信号栈 — 使用 mmap 分配页对齐内存
+// thread_local std::array 在某些 macOS 版本上可能存在对齐问题
+#include <sys/mman.h>
+#include <unistd.h>
+
+static constexpr size_t SIGNAL_STACK_SIZE = 0x8000;  // 32KB
+
+Result SetupGuestSignalStack() {
+    static thread_local void* s_stack = nullptr;
+    if (s_stack) return Result::Success;  // 已设置
+
+    size_t pagesize = (size_t)sysconf(_SC_PAGESIZE);  // 16K on Apple Silicon
+    size_t aligned_size = (SIGNAL_STACK_SIZE + pagesize - 1) & ~(pagesize - 1);
+    
+    void* stack = mmap(nullptr, aligned_size + pagesize,
+                       PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (stack == MAP_FAILED) {
+        LOG_ERROR("SetupGuestSignalStack: mmap failed: %d", errno);
+        return Result::OutOfMemory;
+    }
+    
+    // 在底部设置保护页以检测栈溢出
+    mprotect(stack, pagesize, PROT_NONE);
+    
+    s_stack = stack;
+    stack_t ss;
+    ss.ss_sp = (char*)stack + pagesize;  // 跳过保护页
+    ss.ss_size = aligned_size;
+    ss.ss_flags = 0;
+    
+    if (sigaltstack(&ss, nullptr) != 0) {
+        LOG_ERROR("SetupGuestSignalStack: sigaltstack failed: %d", errno);
+        munmap(stack, aligned_size + pagesize);
+        s_stack = nullptr;
+        return Result::PermissionDenied;
+    }
+    LOG_DEBUG("Guest signal stack set up: sp=%p size=0x%zx (thread)", 
+              ss.ss_sp, ss.ss_size);
+    return Result::Success;
+}
 
 void SigHandler::EnsureInstalled() {
     bool expected = false;
     if (!s_installed.compare_exchange_strong(expected, true)) return;
 
-    // 为信号处理函数设置专用栈
+    // 为主线程设置信号栈
     stack_t ss;
-    ss.ss_sp = s_signal_stack.data();
-    ss.ss_size = s_signal_stack.size();
+    ss.ss_sp = s_main_signal_stack.data();
+    ss.ss_size = s_main_signal_stack.size();
     ss.ss_flags = 0;
     sigaltstack(&ss, nullptr);
 
@@ -146,8 +197,8 @@ void SigHandler::EnsureInstalled() {
         s_installed.store(false);
         return;
     }
-    LOG_DEBUG("Guest signal handlers installed (global, install-once): alt_stack=%p size=%zu",
-              s_signal_stack.data(), s_signal_stack.size());
+    LOG_DEBUG("Guest signal handlers installed (global, install-once): main_alt_stack=%p size=%zu",
+              s_main_signal_stack.data(), s_main_signal_stack.size());
 }
 
 void SigHandler_EnsureInstalled() {

@@ -3,6 +3,7 @@
 #include "common/Types.h"
 #include "common/Log.h"
 #include "memory/Memory.h"
+#include "cpu/ExceptionHandler.h"
 #include <span>
 #include <vector>
 
@@ -11,7 +12,7 @@ public:
     static constexpr u32 SVC_MASK    = 0xFFE0001F;
     static constexpr u32 SVC_PATTERN = 0xD4000001;
     static constexpr u32 BRK_BASE    = 0xD4200000;
-    static constexpr u32 BRK_TAG_BASE = 0x1000;
+    // BRK_TAG_BASE 在 ExceptionHandler.h 中定义
     static constexpr u32 MAX_SVC_ID  = 0x100;
 
     static Result PatchSVCs(u8* code, u64 size,

@@ -17,7 +17,7 @@ add_executable(test_nro_loading
     integration/test_nro_loading.cpp
 )
 target_link_libraries(test_nro_loading
-    m1switch_core m1switch_loader m1switch_common
+    m1switch_core m1switch_loader m1switch_services m1switch_common
 )
 add_test(NAME NroLoading COMMAND test_nro_loading)
 
