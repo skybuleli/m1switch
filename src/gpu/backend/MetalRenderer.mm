@@ -979,7 +979,9 @@ void MetalRenderer::SetFramebufferSource(const u8* guest_memory, u32 width,
         desc.depth = 1;
         desc.mipmapLevelCount = 1;
         desc.usage = MTLTextureUsageShaderRead;
-        desc.storageMode = MTLStorageModePrivate;
+        // 使用 Shared 存储模式，允许 replaceRegion: 直接更新 GPUV
+        // Private 模式 + replaceRegion: 在 macOS 14+ 上会导致崩溃
+        desc.storageMode = MTLStorageModeShared;
 
         fb_texture_ = [device_.Device() newTextureWithDescriptor:desc];
         [desc release];

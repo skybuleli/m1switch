@@ -10,6 +10,8 @@ u64 Vi_GetCurrentFramebuffer();
 u32 Vi_GetFramebufferWidth();
 u32 Vi_GetFramebufferHeight();
 u32 Vi_GetFramebufferStride();
+bool Vi_HasNewFrame();
+void Vi_ConsumeNewFrame();
 }
 
 extern "C" {
@@ -70,7 +72,8 @@ void Input_WriteToHidSharedMemory(u8* mem, u64 size);
     MTLRenderPassDescriptor* desc = view.currentRenderPassDescriptor;
     if (desc && _rnd) {
         // ── 从 VI BufferQueue 获取当前帧缓冲 ─────
-        if (_core) {
+        // 使用 Vi_HasNewFrame 判断是否有新帧提交（避免每帧探测 marker）
+        if (_core && Vi_HasNewFrame()) {
             Memory& mem = _core->GetMemory();
             u64 fb_addr = Vi_GetCurrentFramebuffer();
             u32 fb_width = Vi_GetFramebufferWidth();
@@ -79,13 +82,10 @@ void Input_WriteToHidSharedMemory(u8* mem, u64 size);
 
             u8* fb_ptr = mem.Pointer(fb_addr);
             if (fb_ptr) {
-                u32 marker;
-                std::memcpy(&marker, fb_ptr, 4);
-                if (marker != 0) {
-                    _rnd->SetFramebufferSource(fb_ptr, fb_width, fb_height,
-                                                fb_stride, 4);
-                }
+                _rnd->SetFramebufferSource(fb_ptr, fb_width, fb_height,
+                                            fb_stride, 4);
             }
+            Vi_ConsumeNewFrame();
         }
 
         _rnd->RenderFrame(cmdBuf, desc);

@@ -61,6 +61,11 @@ static u32 g_display_id = 1;    // 显示句柄
 static u64 g_layer_id = 0x0100000000000000ULL;  // 层句柄
 static bool g_layer_created = false;
 
+// ── 新帧通知 ────────────────────────────────────────────
+// Vi_HasNewFrame / Vi_ConsumeNewFrame 用于通知 EmuScreenView
+// 新帧已通过 QueueBuffer 提交，无需每帧检查 marker。
+static std::atomic<bool> g_vi_new_frame{false};
+
 // ── BufferQueueParcelable ──────────────────────────────────
 // 序列化 BufferQueue 状态，供 IPC 传递
 static void WriteBufferQueueParcelable(u8* out, size_t& out_size) {
@@ -328,7 +333,9 @@ private:
                 g_buffer_queue.slots[slot].transform = IpcReadU32(in, 20);
             }
 
-            LOG_DEBUG("VI: QueueBuffer slot=%d addr=0x%llx",
+            g_vi_new_frame.store(true);
+
+        LOG_DEBUG("VI: QueueBuffer slot=%d addr=0x%llx → new frame signaled",
                      slot, g_buffer_queue.slots[slot].gpu_address);
         }
 
@@ -438,7 +445,6 @@ void ServiceVi_Init() {
 extern "C" {
 
 u64 Vi_GetCurrentFramebuffer() {
-    // 返回最近排队的缓冲区地址，供渲染扫描使用
     std::lock_guard lock(g_buffer_queue.mutex);
     for (u32 i = 0; i < BufferQueue::NUM_SLOTS; i++) {
         if (g_buffer_queue.slots[i].state == BufferQueue::SLOT_QUEUED ||
@@ -446,8 +452,16 @@ u64 Vi_GetCurrentFramebuffer() {
             return g_buffer_queue.slots[i].gpu_address;
         }
     }
-    // 回退: 返回第一个帧缓冲
+    // 回退: 返回第一个帧缓冲地址
     return FB_ADDR;
+}
+
+bool Vi_HasNewFrame() {
+    return g_vi_new_frame.load();
+}
+
+void Vi_ConsumeNewFrame() {
+    g_vi_new_frame.store(false);
 }
 
 u32 Vi_GetFramebufferWidth()   { return FB_WIDTH; }
