@@ -321,28 +321,21 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         needs_move_handle = true;
     } else if ((sname == "appletOE" || sname == "appletAE") && cmd_id == 0) {
         needs_move_handle = true;
-    } else if ((sname == "hid" || sname == "hid:") && cmd_id == 1) {
+    } else if ((sname == "hid" || sname == "hid:") && (cmd_id == 0 || cmd_id == 1)) {
+        // cmd 0: _hidCreateAppletResource → 返回子会话 (move handle)
+        // cmd 1: GetSharedMemory → 返回共享内存handle
         needs_move_handle = true;
     } else if (cmd_id <= 1000 && session && session->service &&
                strcmp(session->service->Name(), "appletProxy") == 0) {
         // applet 代理会话的所有子对象命令都返回 move handle
         needs_move_handle = true;
+    } else if (session && session->service &&
+               strcmp(session->service->Name(), "HidAppletResource") == 0) {
+        // HID 子会话的所有命令也返回 move handle (GetSharedMemoryHandle)
+        needs_move_handle = true;
     }
     
-    // HID::Initialize (cmd 0): libnx 期望返回 KSharedMemory handle
-    // 注意: 老版 libnx 可能使用 num_move 而非 num_copy 来编码
-    // 我们用 num_move 兼容老版本
-    if ((sname == "hid" || sname == "hid:") && cmd_id == 0) {
-        if (resp_remaining >= 4 + 4) {
-            LOG_DEBUG("HID: Initialize reserving move handle slot at %+ld", (long)(resp_ptr - response));
-            shdr_pos = resp_ptr;
-            handle_pos = resp_ptr + 4;
-            num_move_handles = 1;  // 有些 libnx 版本用 move 而非 copy
-            resp_hdr.has_special_header = 1;
-            resp_ptr += 4 + 4;
-            resp_remaining -= 4 + 4;
-        }
-    }
+
 
     // SM::Initialize (cmd=0): 返回会话本身的句柄作为 copy handle
     if (sname == "sm" && cmd_id == 0) {

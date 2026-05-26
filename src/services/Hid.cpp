@@ -147,15 +147,42 @@ private:
     KSharedMemory* hid_shmem_ = nullptr;
     u32 hid_shmem_handle_ = 0;
 
-    bool HandleInitialize(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
-        LOG_DEBUG("HID: Initialize handle=0x%x", hid_shmem_handle_);
-        // libnx 的 hidInitialize 期望 cmd 0 返回 KSharedMemory 的 copy handle
-        // 将 KSharedMemory handle 写入 raw_out[0..3], IPC 层会提取到响应头
+    // HID 子会话服务: 接收 _hidGetSharedMemoryHandle (cmd 0)
+    class HidAppletResourceService : public ServiceBase {
+    public:
+        HidAppletResourceService(KSharedMemory* shm) : shm_(shm) {}
+        const char* Name() const override { return "HidAppletResource"; }
+        bool HandleCommand(u32 cmd_id, const u8*, size_t, u8* out, size_t* out_sz) override {
+            if (cmd_id == 0) {
+                // _hidGetSharedMemoryHandle: 返回 KSharedMemory 的 copy handle
+                u32 handle = KernelHandleTable().Create(shm_);
+                LOG_DEBUG("HidAppletResource: cmd 0 → shmem handle=0x%x", handle);
+                if (*out_sz >= 4) {
+                    std::memcpy(out, &handle, sizeof(handle));
+                    *out_sz = 4;
+                }
+                return true;
+            }
+            LOG_TRACE("HidAppletResource: unhandled cmd %u", cmd_id);
+            *out_sz = 0;
+            return true;
+        }
+    private:
+        KSharedMemory* shm_;
+    };
+
+    bool HandleInitialize(const u8*, size_t, u8* out, size_t* out_sz) {
+        LOG_DEBUG("HID: HandleInitialize → create applet resource sub-session");
+        // libnx v3.0.0 的 _hidCreateAppletResource (cmd 0) 期望返回子会话
+        // 创建子会话服务并返回其句柄
+        auto* sub = new HidAppletResourceService(hid_shmem_);
+        u32 sub_session = IpcManager::Instance().CreateSession(sub);
+        LOG_DEBUG("HID: applet resource sub-session=0x%x", sub_session);
         if (*out_sz >= 4) {
-            u32 handle_val = hid_shmem_handle_;
-            std::memcpy(out, &handle_val, sizeof(handle_val));
+            std::memcpy(out, &sub_session, sizeof(sub_session));
             *out_sz = 4;
         }
+        // 因为这是子会话创建，IPC handler 需要把这个作为 move handle 返回
         return true;
     }
 
