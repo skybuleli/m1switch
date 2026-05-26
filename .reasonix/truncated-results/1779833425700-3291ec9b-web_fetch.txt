@@ -1,0 +1,846 @@
+https://raw.githubusercontent.com/switchbrew/libnx/master/nx/source/services/hid.c
+
+#define NX_SERVICE_ASSUME_NON_DOMAIN
+#include "service_guard.h"
+#include <string.h>
+#include <stdlib.h>
+#include <stdatomic.h>
+#include "kernel/shmem.h"
+#include "kernel/mutex.h"
+#include "kernel/rwlock.h"
+#include "services/applet.h"
+#include "services/hid.h"
+#include "runtime/hosversion.h"
+#include "runtime/diag.h"
+#include "../runtime/alloc.h"
+
+static Service g_hidSrv;
+static Service g_hidIAppletResource;
+static Service g_hidIActiveVibrationDeviceList;
+static SharedMemory g_hidSharedmem;
+static Mutex g_hidVibrationMutex;
+
+static u8* g_sevenSixAxisSensorBuffer;
+static TransferMemory g_sevenSixAxisSensorTmem0;
+static TransferMemory g_sevenSixAxisSensorTmem1;
+
+static Result _hidCreateAppletResource(Service* srv, Service* srv_out);
+static Result _hidGetSharedMemoryHandle(Service* srv, Handle* handle_out);
+
+static Result _hidActivateTouchScreen(void);
+static Result _hidActivateMouse(void);
+static Result _hidActivateKeyboard(void);
+static Result _hidActivateNpad(void);
+static Result _hidActivateGesture(void);
+
+static Result _hidGetVibrationDeviceHandles(HidVibrationDeviceHandle *handles, s32 total_handles, HidNpadIdType id, HidNpadStyleTag style);
+
+static Result _hidCreateActiveVibrationDeviceList(Service* srv_out);
+
+static Result _hidActivateVibrationDevice(Service* srv, HidVibrationDeviceHandle handle);
+
+static u8 _hidGetSixAxisSensorHandleNpadStyleIndex(HidSixAxisSensorHandle handle);
+static Result _hidGetSixAxisSensorHandles(HidSixAxisSensorHandle *handles, s32 total_handles, HidNpadIdType id, HidNpadStyleTag style);
+
+static Result _hidGetPalmaOperationResult(HidPalmaConnectionHandle handle);
+
+NX_GENERATE_SERVICE_GUARD(hid);
+
+Result _hidInitialize(void) {
+    Result rc=0;
+    Handle sharedmem_handle;
+
+    rc = smGetService(&g_hidSrv, "hid");
+    if (R_FAILED(rc))
+        return rc;
+
+    rc = _hidCreateAppletResource(&g_hidSrv, &g_hidIAppletResource);
+
+    if (R_SUCCEEDED(rc))
+        rc = _hidGetSharedMemoryHandle(&g_hidIAppletResource, &sharedmem_handle);
+
+    if (R_SUCCEEDED(rc)) {
+        shmemLoadRemote(&g_hidSharedmem, sharedmem_handle, 0x40000, Perm_R);
+        rc = shmemMap(&g_hidSharedmem);
+    }
+
+    return rc;
+}
+
+void _hidCleanup(void) {
+    if (g_sevenSixAxisSensorBuffer != NULL)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_ShouldNotHappen));
+
+    serviceClose(&g_hidIActiveVibrationDeviceList);
+    shmemClose(&g_hidSharedmem);
+    serviceClose(&g_hidIAppletResource);
+    serviceClose(&g_hidSrv);
+}
+
+Service* hidGetServiceSession(void) {
+    return &g_hidSrv;
+}
+
+void* hidGetSharedmemAddr(void) {
+    return shmemGetAddr(&g_hidSharedmem);
+}
+
+static HidNpadInternalState* _hidGetNpadInternalState(HidNpadIdType id) {
+    HidSharedMemory *sharedmem = (HidSharedMemory*)hidGetSharedmemAddr();
+    if (sharedmem == NULL)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_NotInitialized));
+
+    if (id <= HidNpadIdType_No8)
+        return &sharedmem->npad.entries[id].internal_state;
+    else if (id == HidNpadIdType_Handheld)
+        return &sharedmem->npad.entries[8].internal_state;
+    else if (id == HidNpadIdType_Other)
+        return &sharedmem->npad.entries[9].internal_state;
+    else
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_BadInput));
+}
+
+u32 hidGetNpadStyleSet(HidNpadIdType id) {
+    return atomic_load_explicit(&_hidGetNpadInternalState(id)->style_set, memory_order_acquire);
+}
+
+HidNpadJoyAssignmentMode hidGetNpadJoyAssignment(HidNpadIdType id) {
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+
+    HidNpadJoyAssignmentMode tmp = atomic_load_explicit(&npad->joy_assignment_mode, memory_order_acquire);
+    if (tmp != HidNpadJoyAssignmentMode_Dual && tmp != HidNpadJoyAssignmentMode_Single)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_ShouldNotHappen));
+
+    return tmp;
+}
+
+Result hidGetNpadControllerColorSingle(HidNpadIdType id, HidNpadControllerColor *color) {
+    Result rc = 0;
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+
+    HidColorAttribute attribute = npad->full_key_color.attribute;
+    if (attribute==HidColorAttribute_NoController) rc = MAKERESULT(202, 604);
+    else if (attribute==HidColorAttribute_ReadError) rc = MAKERESULT(202, 603);
+    else if (attribute!=HidColorAttribute_Ok) diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_ShouldNotHappen));
+
+    if (R_SUCCEEDED(rc))
+        *color = npad->full_key_color.full_key;
+
+    return rc;
+}
+
+Result hidGetNpadControllerColorSplit(HidNpadIdType id, HidNpadControllerColor *color_left, HidNpadControllerColor *color_right) {
+    Result rc = 0;
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+
+    HidColorAttribute attribute = npad->joy_color.attribute;
+    if (attribute==HidColorAttribute_NoController) rc = MAKERESULT(202, 604);
+    else if (attribute==HidColorAttribute_ReadError) rc = MAKERESULT(202, 603);
+    else if (attribute!=HidColorAttribute_Ok) diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_ShouldNotHappen));
+
+    if (R_SUCCEEDED(rc)) {
+        *color_left  = npad->joy_color.left;
+        *color_right = npad->joy_color.right;
+    }
+
+    return rc;
+}
+
+u32 hidGetNpadDeviceType(HidNpadIdType id) {
+    return atomic_load_explicit(&_hidGetNpadInternalState(id)->device_type, memory_order_acquire);
+}
+
+void hidGetNpadSystemProperties(HidNpadIdType id, HidNpadSystemProperties *out) {
+    *out = atomic_load_explicit(&_hidGetNpadInternalState(id)->system_properties, memory_order_acquire);
+}
+
+void hidGetNpadSystemButtonProperties(HidNpadIdType id, HidNpadSystemButtonProperties *out) {
+    *out = atomic_load_explicit(&_hidGetNpadInternalState(id)->system_button_properties, memory_order_acquire);
+}
+
+static void _hidGetNpadPowerInfo(HidNpadInternalState *npad, HidPowerInfo *info, u64 is_charging, u64 is_powered, u32 i) {
+    *info = (HidPowerInfo){
+        .battery_level = atomic_load_explicit(&npad->battery_level[i], memory_order_acquire),
+        .is_charging = (is_charging & BIT(i)) != 0,
+        .is_powered = (is_powered & BIT(i)) != 0,
+    };
+    if (info->battery_level > 4) info->battery_level = 4; // sdknso would Abort when this occurs.
+}
+
+void hidGetNpadPowerInfoSingle(HidNpadIdType id, HidPowerInfo *info) {
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+
+    HidNpadSystemProperties properties;
+    properties = atomic_load_explicit(&npad->system_properties, memory_order_acquire);
+
+    _hidGetNpadPowerInfo(npad, info, properties.is_charging, properties.is_powered, 0);
+}
+
+void hidGetNpadPowerInfoSplit(HidNpadIdType id, HidPowerInfo *info_left, HidPowerInfo *info_right) {
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+
+    HidNpadSystemProperties properties;
+    properties = atomic_load_explicit(&npad->system_properties, memory_order_acquire);
+
+    _hidGetNpadPowerInfo(npad, info_left,  properties.is_charging, properties.is_powered, 1);
+    _hidGetNpadPowerInfo(npad, info_right, properties.is_charging, properties.is_powered, 2);
+}
+
+u32 hidGetAppletFooterUiAttributesSet(HidNpadIdType id) {
+    return atomic_load_explicit(&_hidGetNpadInternalState(id)->applet_footer_ui_attribute, memory_order_acquire);
+}
+
+HidAppletFooterUiType hidGetAppletFooterUiTypes(HidNpadIdType id) {
+    return atomic_load_explicit(&_hidGetNpadInternalState(id)->applet_footer_ui_type, memory_order_acquire);
+}
+
+HidNpadLagerType hidGetNpadLagerType(HidNpadIdType id) {
+    HidNpadLagerType lager_type = atomic_load_explicit(&_hidGetNpadInternalState(id)->lager_type, memory_order_acquire);
+    if (!(lager_type>=HidNpadLagerType_J && lager_type<=HidNpadLagerType_U)) lager_type = HidNpadLagerType_Invalid;
+    return lager_type;
+}
+
+static size_t _hidGetStates(HidCommonLifoHeader *header, void* in_states, size_t max_states, size_t state_offset, size_t sampling_number_offset, void* states, size_t entrysize, size_t count) {
+    s32 total_entries = (s32)atomic_load_explicit(&header->count, memory_order_acquire);
+    if (total_entries < 0) total_entries = 0;
+    if (total_entries > count) total_entries = count;
+    s32 tail = (s32)atomic_load_explicit(&header->tail, memory_order_acquire);
+
+    for (s32 i=0; i<total_entries; i++) {
+        s32 entrypos = (((tail + (max_states+1)) - total_entries) + i) % max_states;
+        void* state_entry = (void*)((uintptr_t)in_states + entrypos*(state_offset+entrysize));
+        void* out_state = (void*)((uintptr_t)states + (total_entries-i-1)*entrysize);
+        void* out_state_prev = (void*)((uintptr_t)states + (total_entries-i)*entrysize);
+
+        u64 sampling_number0=0, sampling_number1=0;
+
+        sampling_number0 = atomic_load_explicit((u64*)state_entry, memory_order_acquire);
+        memcpy(out_state, (void*)((uintptr_t)state_entry + state_offset), entrysize);
+        sampling_number1 = atomic_load_explicit((u64*)state_entry, memory_order_acquire);
+
+        if (sampling_number0 != sampling_number1 || (i>0 && *((u64*)((uintptr_t)out_state+sampling_number_offset)) - *((u64*)((uintptr_t)out_state_prev+sampling_number_offset)) != 1)) {
+            s32 tmpcount = (s32)atomic_load_explicit(&header->count, memory_order_acquire);
+            tmpcount = total_entries < tmpcount ? tmpcount : total_entries;
+            total_entries = tmpcount < count ? tmpcount : count;
+            tail = (s32)atomic_load_explicit(&header->tail, memory_order_acquire);
+
+            i=-1;
+        }
+    }
+
+    return total_entries;
+}
+
+void hidInitializeTouchScreen(void) {
+    Result rc = _hidActivateTouchScreen();
+    if (R_FAILED(rc)) diagAbortWithResult(rc);
+}
+
+size_t hidGetTouchScreenStates(HidTouchScreenState *states, size_t count) {
+    HidSharedMemory *sharedmem = (HidSharedMemory*)hidGetSharedmemAddr();
+    if (sharedmem == NULL)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_NotInitialized));
+
+    size_t total = _hidGetStates(&sharedmem->touchscreen.lifo.header, sharedmem->touchscreen.lifo.storage, 17, offsetof(HidTouchScreenStateAtomicStorage,state), offsetof(HidTouchScreenState,sampling_number), states, sizeof(HidTouchScreenState), count);
+    size_t max_touches = sizeof(states[0].touches)/sizeof(states[0].touches[0]);
+    for (size_t i=0; i<total; i++) {
+        if (states[i].count > max_touches) states[i].count = max_touches;
+    }
+    return total;
+}
+
+void hidInitializeMouse(void) {
+    Result rc = _hidActivateMouse();
+    if (R_FAILED(rc)) diagAbortWithResult(rc);
+}
+
+size_t hidGetMouseStates(HidMouseState *states, size_t count) {
+    HidSharedMemory *sharedmem = (HidSharedMemory*)hidGetSharedmemAddr();
+    if (sharedmem == NULL)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_NotInitialized));
+
+    size_t total = _hidGetStates(&sharedmem->mouse.lifo.header, sharedmem->mouse.lifo.storage, 17, offsetof(HidMouseStateAtomicStorage,state), offsetof(HidMouseState,sampling_number), states, sizeof(HidMouseState), count);
+    return total;
+}
+
+void hidInitializeKeyboard(void) {
+    Result rc = _hidActivateKeyboard();
+    if (R_FAILED(rc)) diagAbortWithResult(rc);
+}
+
+size_t hidGetKeyboardStates(HidKeyboardState *states, size_t count) {
+    HidSharedMemory *sharedmem = (HidSharedMemory*)hidGetSharedmemAddr();
+    if (sharedmem == NULL)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_NotInitialized));
+
+    size_t total = _hidGetStates(&sharedmem->keyboard.lifo.header, sharedmem->keyboard.lifo.storage, 17, offsetof(HidKeyboardStateAtomicStorage,state), offsetof(HidKeyboardState,sampling_number), states, sizeof(HidKeyboardState), count);
+    return total;
+}
+
+size_t hidGetHomeButtonStates(HidHomeButtonState *states, size_t count) {
+    HidSharedMemory *sharedmem = (HidSharedMemory*)hidGetSharedmemAddr();
+    if (sharedmem == NULL)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_NotInitialized));
+
+    size_t total = _hidGetStates(&sharedmem->home_button.lifo.header, sharedmem->home_button.lifo.storage, 17, offsetof(HidHomeButtonStateAtomicStorage,state), offsetof(HidHomeButtonState,sampling_number), states, sizeof(HidHomeButtonState), count);
+    return total;
+}
+
+size_t hidGetSleepButtonStates(HidSleepButtonState *states, size_t count) {
+    HidSharedMemory *sharedmem = (HidSharedMemory*)hidGetSharedmemAddr();
+    if (sharedmem == NULL)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_NotInitialized));
+
+    size_t total = _hidGetStates(&sharedmem->sleep_button.lifo.header, sharedmem->sleep_button.lifo.storage, 17, offsetof(HidSleepButtonStateAtomicStorage,state), offsetof(HidSleepButtonState,sampling_number), states, sizeof(HidSleepButtonState), count);
+    return total;
+}
+
+size_t hidGetCaptureButtonStates(HidCaptureButtonState *states, size_t count) {
+    HidSharedMemory *sharedmem = (HidSharedMemory*)hidGetSharedmemAddr();
+    if (sharedmem == NULL)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_NotInitialized));
+
+    size_t total = _hidGetStates(&sharedmem->capture_button.lifo.header, sharedmem->capture_button.lifo.storage, 17, offsetof(HidCaptureButtonStateAtomicStorage,state), offsetof(HidCaptureButtonState,sampling_number), states, sizeof(HidCaptureButtonState), count);
+    return total;
+}
+
+void hidInitializeNpad(void) {
+    Result rc = _hidActivateNpad();
+    if (R_FAILED(rc)) diagAbortWithResult(rc);
+}
+
+static size_t _hidGetNpadStates(HidNpadCommonLifo *lifo, HidNpadCommonState *states, size_t count) {
+    if (count > 17) count = 17;
+    return _hidGetStates(&lifo->header, lifo->storage, 17, offsetof(HidNpadCommonStateAtomicStorage,state), offsetof(HidNpadCommonState,sampling_number), states, sizeof(HidNpadCommonState), count);
+}
+
+size_t hidGetNpadStatesFullKey(HidNpadIdType id, HidNpadFullKeyState *states, size_t count) {
+    size_t total = _hidGetNpadStates(&_hidGetNpadInternalState(id)->full_key_lifo, states, count);
+
+    // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+    return total;
+}
+
+size_t hidGetNpadStatesHandheld(HidNpadIdType id, HidNpadHandheldState *states, size_t count) {
+    size_t total = _hidGetNpadStates(&_hidGetNpadInternalState(id)->handheld_lifo, states, count);
+
+    // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+    return total;
+}
+
+size_t hidGetNpadStatesJoyDual(HidNpadIdType id, HidNpadJoyDualState *states, size_t count) {
+    size_t total = _hidGetNpadStates(&_hidGetNpadInternalState(id)->joy_dual_lifo, states, count);
+
+    // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+    return total;
+}
+
+size_t hidGetNpadStatesJoyLeft(HidNpadIdType id, HidNpadJoyLeftState *states, size_t count) {
+    size_t total = _hidGetNpadStates(&_hidGetNpadInternalState(id)->joy_left_lifo, states, count);
+
+    // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+    return total;
+}
+
+size_t hidGetNpadStatesJoyRight(HidNpadIdType id, HidNpadJoyRightState *states, size_t count) {
+    size_t total = _hidGetNpadStates(&_hidGetNpadInternalState(id)->joy_right_lifo, states, count);
+
+    // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+    return total;
+}
+
+size_t hidGetNpadStatesGc(HidNpadIdType id, HidNpadGcState *states, size_t count) {
+    HidNpadCommonState tmp_entries[17];
+    HidNpadGcTriggerState tmp_entries_trigger[17];
+
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+    size_t total = _hidGetNpadStates(&npad->full_key_lifo, tmp_entries, count);
+    size_t total2 = _hidGetStates(&npad->gc_trigger_lifo.header, npad->gc_trigger_lifo.storage, 17, offsetof(HidNpadGcTriggerStateAtomicStorage,state), offsetof(HidNpadGcTriggerState,sampling_number), tmp_entries_trigger, sizeof(HidNpadGcTriggerState), total);
+    if (total2 < total) total = total2;
+
+    memset(states, 0, sizeof(HidNpadGcState) * total);
+
+    for (size_t i=0; i<total; i++) {
+        states[i].sampling_number = tmp_entries[i].sampling_number;
+
+        // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+        states[i].buttons = tmp_entries[i].buttons;
+
+        memcpy(&states[i].analog_stick_l, &tmp_entries[i].analog_stick_l, sizeof(tmp_entries[i].analog_stick_l)); // sdknso uses index 0 for the src here.
+        memcpy(&states[i].analog_stick_r, &tmp_entries[i].analog_stick_r, sizeof(tmp_entries[i].analog_stick_r)); // sdknso uses index 0 for the src here.
+        states[i].attributes = tmp_entries[i].attributes;
+
+        states[i].trigger_l = tmp_entries_trigger[i].trigger_l;
+        states[i].trigger_r = tmp_entries_trigger[i].trigger_r;
+    }
+
+    return total;
+}
+
+size_t hidGetNpadStatesPalma(HidNpadIdType id, HidNpadPalmaState *states, size_t count) {
+    size_t total = _hidGetNpadStates(&_hidGetNpadInternalState(id)->palma_lifo, states, count);
+
+    // sdknso doesn't handle ControlPadRestriction with this.
+
+    return total;
+}
+
+size_t hidGetNpadStatesLark(HidNpadIdType id, HidNpadLarkState *states, size_t count) {
+    HidNpadCommonState tmp_entries[17];
+
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+    size_t total = _hidGetNpadStates(&npad->full_key_lifo, tmp_entries, count);
+
+    memset(states, 0, sizeof(HidNpadLarkState) * total);
+
+    HidNpadLarkType lark_type_l_and_main = atomic_load_explicit(&npad->lark_type_l_and_main, memory_order_acquire);
+    if (!(lark_type_l_and_main>=HidNpadLarkType_H1 && lark_type_l_and_main<=HidNpadLarkType_NR)) lark_type_l_and_main = HidNpadLarkType_Invalid;
+
+    for (size_t i=0; i<total; i++) {
+        states[i].sampling_number = tmp_entries[i].sampling_number;
+
+        // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+        states[i].buttons = tmp_entries[i].buttons;
+
+        // Leave analog-sticks state at zeros.
+
+        states[i].attributes = tmp_entries[i].attributes;
+        states[i].lark_type_l_and_main = lark_type_l_and_main;
+    }
+
+    return total;
+}
+
+size_t hidGetNpadStatesHandheldLark(HidNpadIdType id, HidNpadHandheldLarkState *states, size_t count) {
+    HidNpadCommonState tmp_entries[17];
+
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+    size_t total = _hidGetNpadStates(&npad->handheld_lifo, tmp_entries, count);
+
+    memset(states, 0, sizeof(HidNpadHandheldLarkState) * total);
+
+    HidNpadLarkType lark_type_l_and_main = atomic_load_explicit(&npad->lark_type_l_and_main, memory_order_acquire);
+    if (!(lark_type_l_and_main>=HidNpadLarkType_H1 && lark_type_l_and_main<=HidNpadLarkType_NR)) lark_type_l_and_main = HidNpadLarkType_Invalid;
+
+    HidNpadLarkType lark_type_r = atomic_load_explicit(&npad->lark_type_r, memory_order_acquire);
+    if (!(lark_type_r>=HidNpadLarkType_H1 && lark_type_r<=HidNpadLarkType_NR)) lark_type_r = HidNpadLarkType_Invalid;
+
+    for (size_t i=0; i<total; i++) {
+        states[i].sampling_number = tmp_entries[i].sampling_number;
+
+        // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+        states[i].buttons = tmp_entries[i].buttons;
+
+        memcpy(&states[i].analog_stick_l, &tmp_entries[i].analog_stick_l, sizeof(tmp_entries[i].analog_stick_l)); // sdknso uses index 0 for the src here.
+        memcpy(&states[i].analog_stick_r, &tmp_entries[i].analog_stick_r, sizeof(tmp_entries[i].analog_stick_r)); // sdknso uses index 0 for the src here.
+        states[i].attributes = tmp_entries[i].attributes;
+        states[i].lark_type_l_and_main = lark_type_l_and_main;
+        states[i].lark_type_r = lark_type_r;
+    }
+
+    return total;
+}
+
+size_t hidGetNpadStatesLucia(HidNpadIdType id, HidNpadLuciaState *states, size_t count) {
+    HidNpadCommonState tmp_entries[17];
+
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+    size_t total = _hidGetNpadStates(&npad->full_key_lifo, tmp_entries, count);
+
+    memset(states, 0, sizeof(HidNpadLuciaState) * total);
+
+    HidNpadLuciaType lucia_type = atomic_load_explicit(&npad->lucia_type, memory_order_acquire);
+    if (!(lucia_type>=HidNpadLuciaType_J && lucia_type<=HidNpadLuciaType_U)) lucia_type = HidNpadLuciaType_Invalid;
+
+    for (size_t i=0; i<total; i++) {
+        states[i].sampling_number = tmp_entries[i].sampling_number;
+
+        // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+        states[i].buttons = tmp_entries[i].buttons;
+
+        // Leave analog-sticks state at zeros.
+
+        states[i].attributes = tmp_entries[i].attributes;
+        states[i].lucia_type = lucia_type;
+    }
+
+    return total;
+}
+
+size_t hidGetNpadStatesLager(HidNpadIdType id, HidNpadLagerState *states, size_t count) {
+    HidNpadCommonState tmp_entries[17];
+
+    HidNpadInternalState *npad = _hidGetNpadInternalState(id);
+    size_t total = _hidGetNpadStates(&npad->full_key_lifo, tmp_entries, count);
+
+    memset(states, 0, sizeof(HidNpadLagerState) * total);
+
+    for (size_t i=0; i<total; i++) {
+        states[i].sampling_number = tmp_entries[i].sampling_number;
+
+        // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+        states[i].buttons = tmp_entries[i].buttons;
+
+        // Leave analog-sticks state at zeros.
+
+        states[i].attributes = tmp_entries[i].attributes;
+    }
+
+    return total;
+}
+
+size_t hidGetNpadStatesSystemExt(HidNpadIdType id, HidNpadSystemExtState *states, size_t count) {
+    size_t total = _hidGetNpadStates(&_hidGetNpadInternalState(id)->system_ext_lifo, states, count);
+
+    // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+    return total;
+}
+
+size_t hidGetNpadStatesSystem(HidNpadIdType id, HidNpadSystemState *states, size_t count) {
+    size_t total = _hidGetNpadStates(&_hidGetNpadInternalState(id)->system_ext_lifo, states, count);
+
+    for (size_t i=0; i<total; i++) {
+        u64 buttons = states[i].buttons;
+        u64 new_buttons = 0;
+
+        if (buttons & HidNpadButton_AnyLeft) new_buttons |= HidNpadButton_Left;
+        if (buttons & HidNpadButton_AnyUp) new_buttons |= HidNpadButton_Up;
+        if (buttons & HidNpadButton_AnyRight) new_buttons |= HidNpadButton_Right;
+        if (buttons & HidNpadButton_AnyDown) new_buttons |= HidNpadButton_Down;
+        if (buttons & (HidNpadButton_L|HidNpadButton_ZL)) new_buttons |= HidNpadButton_L; // sdknso would mask out this button on the else condition for both of these, but it was already clear anyway.
+        if (buttons & (HidNpadButton_R|HidNpadButton_ZR)) new_buttons |= HidNpadButton_R;
+        buttons = new_buttons | (buttons & (HidNpadButton_A|HidNpadButton_B|HidNpadButton_X|HidNpadButton_Y));
+
+        // sdknso would handle button-bitmasking with ControlPadRestriction here.
+
+        states[i].buttons = buttons;
+
+        memset(&states[i].analog_stick_l, 0, sizeof(states[i].analog_stick_l));
+        memset(&states[i].analog_stick_r, 0, sizeof(states[i].analog_stick_r));
+    }
+
+    return total;
+}
+
+size_t hidGetSixAxisSensorStates(HidSixAxisSensorHandle handle, HidSixAxisSensorState *states, size_t count) {
+    HidNpadSixAxisSensorLifo *lifo = NULL;
+    HidNpadInternalState *npad = _hidGetNpadInternalState(handle.player_number);
+    switch(_hidGetSixAxisSensorHandleNpadStyleIndex(handle)) {
+        default:
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_ShouldNotHappen));
+
+        case 0: // NpadFullKey/NpadPalma
+        case 5: // NpadGc (not actually returned by GetHandles, NpadFullKey is used instead)
+            lifo = &npad->full_key_six_axis_sensor_lifo;
+        break;
+
+        case 1: // NpadHandheld/NpadHandheldLark
+            lifo = &npad->handheld_six_axis_sensor_lifo;
+        break;
+
+        case 2: // NpadJoyDual
+            if (handle.device_idx==0) lifo = &npad->joy_dual_left_six_axis_sensor_lifo;
+            else if (handle.device_idx==1) lifo = &npad->joy_dual_right_six_axis_sensor_lifo;
+            else diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_ShouldNotHappen));
+        break;
+
+        case 3: // NpadJoyLeft
+            lifo = &npad->joy_left_six_axis_sensor_lifo;
+        break;
+
+        case 4: // NpadJoyRight
+            lifo = &npad->joy_right_six_axis_sensor_lifo;
+        break;
+
+        case 29: // System(Ext) (not actually returned by GetHandles)
+        case 30:
+        return 0;
+    }
+
+    size_t total = _hidGetStates(&lifo->header, lifo->storage, 17, offsetof(HidSixAxisSensorStateAtomicStorage,state), offsetof(HidSixAxisSensorState,sampling_number), states, sizeof(HidSixAxisSensorState), count);
+    return total;
+}
+
+void hidInitializeGesture(void) {
+    Result rc = _hidActivateGesture();
+    if (R_FAILED(rc)) diagAbortWithResult(rc);
+}
+
+size_t hidGetGestureStates(HidGestureState *states, size_t count) {
+    HidSharedMemory *sharedmem = (HidSharedMemory*)hidGetSharedmemAddr();
+    if (sharedmem == NULL)
+        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_NotInitialized));
+
+    size_t total = _hidGetStates(&sharedmem->gesture.lifo.header, sharedmem->gesture.lifo.storage, 17, offsetof(HidGestureDummyStateAtomicStorage,state), offsetof(HidGestureState,sampling_number), states, sizeof(HidGestureState), count);
+    return total;
+}
+
+static Result _hidCmdNoIO(Service* srv, u32 cmd_id) {
+    return serviceDispatch(srv, cmd_id);
+}
+
+static Result _hidCmdGetHandle(Service* srv, Handle* handle_out, u32 cmd_id) {
+    return serviceDispatch(srv, cmd_id,
+        .out_handle_attrs = { SfOutHandleAttr_HipcCopy },
+        .out_handles = handle_out,
+    );
+}
+
+static Result _hidCmdGetSession(Service* srv_out, u32 cmd_id) {
+    return serviceDispatch(&g_hidSrv, cmd_id,
+        .out_num_objects = 1,
+        .out_objects = srv_out,
+    );
+}
+
+static Result _hidCmdInAruidNoOut(u32 cmd_id) {
+    u64 AppletResourceUserId = appletGetAppletResourceUserId();
+
+    return serviceDispatchIn(&g_hidSrv, cmd_id, AppletResourceUserId,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInU8NoOut(u8 inval, u32 cmd_id) {
+    return serviceDispatchIn(&g_hidSrv, cmd_id, inval);
+}
+
+static Result _hidCmdInBoolNoOut(bool inval, u32 cmd_id) {
+    return _hidCmdInU8NoOut(inval!=0, cmd_id);
+}
+
+static Result _hidCmdInU32NoOut(Service* srv, u32 inval, u32 cmd_id) {
+    return serviceDispatchIn(srv, cmd_id, inval);
+}
+
+static Result _hidCmdInU64NoOut(Service* srv, u64 inval, u32 cmd_id) {
+    return serviceDispatchIn(srv, cmd_id, inval);
+}
+
+static Result _hidCmdInU16U64NoOut(Service* srv, u16 inval0, u64 inval1, u32 cmd_id) {
+    const struct {
+        u16 inval0;
+        u8 pad[6];
+        u64 inval1;
+    } in = { inval0, {0}, inval1 };
+
+    return serviceDispatchIn(srv, cmd_id, in);
+}
+
+static Result _hidCmdInU32U64NoOut(Service* srv, u32 inval0, u64 inval1, u32 cmd_id) {
+    const struct {
+        u32 inval0;
+        u32 pad;
+        u64 inval1;
+    } in = { inval0, 0, inval1 };
+
+    return serviceDispatchIn(srv, cmd_id, in);
+}
+
+static Result _hidCmdInU64U64NoOut(Service* srv, u64 inval0, u64 inval1, u32 cmd_id) {
+    const struct {
+        u64 inval0;
+        u64 inval1;
+    } in = { inval0, inval1 };
+
+    return serviceDispatchIn(srv, cmd_id, in);
+}
+
+static Result _hidCmdInU8AruidNoOut(u8 inval, u32 cmd_id) {
+    const struct {
+        u8 inval;
+        u8 pad[7];
+        u64 AppletResourceUserId;
+    } in = { inval, {0}, appletGetAppletResourceUserId() };
+
+    return serviceDispatchIn(&g_hidSrv, cmd_id, in,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInBoolAruidNoOut(bool flag, u32 cmd_id) {
+    return _hidCmdInU8AruidNoOut(flag!=0, cmd_id);
+}
+
+static Result _hidCmdInU32AruidNoOut(u32 inval, u32 cmd_id) {
+    const struct {
+        u32 inval;
+        u32 pad;
+        u64 AppletResourceUserId;
+    } in = { inval, 0, appletGetAppletResourceUserId() };
+
+    return serviceDispatchIn(&g_hidSrv, cmd_id, in,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInU64AruidNoOut(u64 inval, u32 cmd_id) {
+    const struct {
+        u64 AppletResourceUserId;
+        u64 inval;
+    } in = { appletGetAppletResourceUserId(), inval };
+
+    return serviceDispatchIn(&g_hidSrv, cmd_id, in,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInU32AruidU64NoOut(u32 in32, u64 in64, u32 cmd_id) {
+    const struct {
+        u32 in32;
+        u32 pad;
+        u64 AppletResourceUserId;
+        u64 in64;
+    } in = { in32, 0, appletGetAppletResourceUserId(), in64 };
+
+    return serviceDispatchIn(&g_hidSrv, cmd_id, in,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInU8U32AruidNoOut(u8 in8, u32 in32, u32 cmd_id) {
+    const struct {
+        u8 in8;
+        u8 pad[3];
+        u32 in32;
+        u64 AppletResourceUserId;
+    } in = { in8, {0}, in32, appletGetAppletResourceUserId() };
+
+    return serviceDispatchIn(&g_hidSrv, cmd_id, in,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInBoolU32AruidNoOut(bool flag, u32 in32, u32 cmd_id) {
+    return _hidCmdInU8U32AruidNoOut(flag!=0, in32, cmd_id);
+}
+
+static Result _hidCmdInU32U32AruidNoOut(u32 val0, u32 val1, u32 cmd_id) {
+    const struct {
+        u32 val0, val1;
+        u64 AppletResourceUserId;
+    } in = { val0, val1, appletGetAppletResourceUserId() };
+
+    return serviceDispatchIn(&g_hidSrv, cmd_id, in,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInU32AruidOutU8(u32 inval, u8 *out, u32 cmd_id) {
+    const struct {
+        u32 inval;
+        u32 pad;
+        u64 AppletResourceUserId;
+    } in = { inval, 0, appletGetAppletResourceUserId() };
+
+    return serviceDispatchInOut(&g_hidSrv, cmd_id, in, *out,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInU32AruidOutBool(u32 inval, bool *out, u32 cmd_id) {
+    u8 tmp=0;
+    Result rc = _hidCmdInU32AruidOutU8(inval, &tmp, cmd_id);
+    if (R_SUCCEEDED(rc) && out) *out = tmp & 1;
+    return rc;
+}
+
+static Result _hidCmdInU32AruidOutU64(u32 inval, u64 *out, u32 cmd_id) {
+    const struct {
+        u32 inval;
+        u32 pad;
+        u64 AppletResourceUserId;
+    } in = { inval, 0, appletGetAppletResourceUserId() };
+
+    return serviceDispatchInOut(&g_hidSrv, cmd_id, in, *out,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInAruidOutU32(u32 *out, u32 cmd_id) {
+    u64 AppletResourceUserId = appletGetAppletResourceUserId();
+
+    return serviceDispatchInOut(&g_hidSrv, cmd_id, AppletResourceUserId, *out,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdInAruidOutU64(u64 *out, u32 cmd_id) {
+    u64 AppletResourceUserId = appletGetAppletResourceUserId();
+
+    return serviceDispatchInOut(&g_hidSrv, cmd_id, AppletResourceUserId, *out,
+        .in_send_pid = true,
+    );
+}
+
+static Result _hidCmdNoInOutU8(u8 *out, u32 cmd_id) {
+    return serviceDispatchOut(&g_hidSrv, cmd_id, *out);
+}
+
+static Result _hidCmdNoInOutBool(bool *out, u32 cmd_id) {
+    u8 tmp=0;
+    Result rc = _hidCmdNoInOutU8(&tmp, cmd_id);
+    if (R_SUCCEEDED(rc) && out) *out = tmp & 1;
+    return rc;
+}
+
+static Result _hidCmdNoInOutU64(u64 *out, u32 cmd_id) {
+    return serviceDispatchOut(&g_hidSrv, cmd_id, *out);
+}
+
+static Result _hidCreateAppletResource(Service* srv, Service* srv_out) {
+    u64 AppletResourceUserId = appletGetAppletResourceUserId();
+
+    return serviceDispatchIn(srv, 0, AppletResourceUserId,
+        .in_send_pid = true,
+        .out_num_objects = 1,
+        .out_objects = srv_out,
+    );
+}
+
+static Result _hidGetSharedMemoryHandle(Service* srv, Handle* handle_out) {
+    return _hidCmdGetHandle(srv, handle_out, 0);
+}
+
+static Result _hidActivateTouchScreen(void) {
+    return _hidCmdInAruidNoOut(11);
+}
+
+static Result _hidActivateMouse(void) {
+    return _hidCmdInAruidNoOut(21);
+}
+
+static Result _hidActivateKeyboard(void) {
+    return _hidCmdInAruidNoOut(31);
+}
+
+Result hidSendKeyboardLockKeyEvent(u32 events) {
+    if (hosversionBefore(6,0,0))
+        return MAKERESULT(Module_Libnx, LibnxError_IncompatSysVer);
+
+    return _hidCmdInU32AruidNoOut(events, 32);
+}
+
+Result hidGetSixAxisSensorHandles(HidSixAxisSensorHandle *handles, s32 total_handles, HidNpadIdType id, HidNpadStyleTag style) {
+    return _hidGetSixAxisSensorHandles(handles, total_handles, id, style);
+}
+
+Result hidStartSixAxisSensor(HidSixAxisSensorHandle handle) {
+    return _hidCmdInU32AruidNoOut(handle.type_value, 66);
+}
+
+Result hidStopSixAxisSensor(HidSixAxisSensorHandle handle) {
+    return _hidCmdI
+
+[… truncated 36752 chars …]

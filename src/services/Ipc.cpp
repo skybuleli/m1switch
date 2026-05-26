@@ -30,6 +30,14 @@ struct __attribute__((packed)) HipcSpecialHeader {
     u32 num_move_handles : 4;
     u32 padding          : 23;
 };
+// 注意: 某些 libnx 版本使用相反的位域顺序 (copy↔move)
+// 我们定义两种以便验证。
+struct __attribute__((packed)) HipcSpecialHeaderAlt {
+    u32 send_pid         : 1;
+    u32 num_move_handles : 4;  // swapped order
+    u32 num_copy_handles : 4;
+    u32 padding          : 23;
+};
 static_assert(sizeof(HipcSpecialHeader) == 4, "HipcSpecialHeader must be 4 bytes");
 
 struct __attribute__((packed)) HipcRecvListEntry {
@@ -321,13 +329,15 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         needs_move_handle = true;
     }
     
-    // HID::Initialize (cmd 0): libnx 期望返回 KSharedMemory 的 copy handle
+    // HID::Initialize (cmd 0): libnx 期望返回 KSharedMemory handle
+    // 注意: 老版 libnx 可能使用 num_move 而非 num_copy 来编码
+    // 我们用 num_move 兼容老版本
     if ((sname == "hid" || sname == "hid:") && cmd_id == 0) {
         if (resp_remaining >= 4 + 4) {
-            LOG_DEBUG("HID: Initialize reserving copy handle slot");
+            LOG_DEBUG("HID: Initialize reserving move handle slot at %+ld", (long)(resp_ptr - response));
             shdr_pos = resp_ptr;
             handle_pos = resp_ptr + 4;
-            num_copy_handles = 1;
+            num_move_handles = 1;  // 有些 libnx 版本用 move 而非 copy
             resp_hdr.has_special_header = 1;
             resp_ptr += 4 + 4;
             resp_remaining -= 4 + 4;
@@ -524,6 +534,18 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
               response[4],response[5],response[6],response[7],
               response[8],response[9],response[10],response[11],
               response[12],response[13],response[14],response[15]);
+
+    // HID 诊断：输出完整 64 字节响应
+    if ((sname == "hid" || sname == "hid:") && cmd_id == 0) {
+        char hex[256] = {};
+        int n = 0;
+        size_t dump_sz = *resp_size < 64 ? *resp_size : 64;
+        for (size_t i = 0; i < dump_sz; i++)
+            n += snprintf(hex + n, sizeof(hex) - n, "%02x", response[i]);
+        LOG_INFO("HID_RESP: sz=%zu raw_off=%zu num_dw=%u special=%u copy=%u: %s",
+                  *resp_size, (size_t)(raw_out - response), resp_hdr.num_data_words,
+                  resp_hdr.has_special_header, num_copy_handles, hex);
+    }
 
     TRACE_IPC(cmd_id | 0x8000, (u64)session_handle, (u64)handled, 0);
     return 0;
