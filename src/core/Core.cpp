@@ -55,8 +55,8 @@ void EmulatorCore::InitServices() {
 
     tracker_.SetMemory(&memory_);
     ServiceNv_SetMemory(&memory_);
-    ServiceNv_SetGpuFifo(&tracker_.GetGPFifo());
     ServiceNv_SetTracker(&tracker_);
+    // GPFifo 被 StateTracker 内部持有，NV service 通过 StateTracker 间接访问
 
     LOG_INFO("Services initialized");
 }

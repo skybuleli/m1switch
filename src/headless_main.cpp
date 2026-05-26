@@ -92,8 +92,8 @@ int main(int argc, char** argv) {
 
     // ── 7. NV wiring ──────────────────────────────
     ServiceNv_SetMemory(&memory);
-    ServiceNv_SetGpuFifo(&tracker.GetGPFifo());
     ServiceNv_SetTracker(&tracker);
+    // GPFifo 被 StateTracker 内部持有，NV service 通过 StateTracker 间接访问
 
     // ── 8. Install SIGTRAP ─────────────────────────
     g_sig_handler.SetSvcDispatch([](u32 svc, GuestThreadState* st) {

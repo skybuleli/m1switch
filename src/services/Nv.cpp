@@ -28,11 +28,12 @@
 
 static Memory*      g_nv_memory = nullptr;
 static StateTracker* g_nv_tracker = nullptr;
-static GPFifo*       g_nv_fifo = nullptr;
+// Future: replace individual pointers with Gpu coordinator
+// static Gpu*       g_nv_gpu = nullptr;
 
 void ServiceNv_SetMemory(Memory* mem) { g_nv_memory = mem; }
-void ServiceNv_SetGpuFifo(GPFifo* fifo) { g_nv_fifo = fifo; }
 void ServiceNv_SetTracker(StateTracker* t) { g_nv_tracker = t; }
+// void ServiceNv_SetGpu(Gpu* gpu) { g_nv_gpu = gpu; }
 
 // ── NvMap 内存分配表 ─────────────────────────────────────
 // 跟踪所有 NvMap 分配, 支持从客户机地址到 GPU IOVA 的映射
@@ -487,7 +488,7 @@ private:
 
         LOG_INFO("NVGPU: SubmitGpfifo addr=0x%llx words=%u", pb_addr, num_words);
 
-        if (!g_nv_memory || !g_nv_fifo || num_words == 0) {
+        if (!g_nv_memory || !g_nv_tracker || num_words == 0) {
             *out_sz = 0;
             return true;
         }
@@ -502,13 +503,9 @@ private:
             words[i] = w;
         }
 
-        size_t consumed = g_nv_fifo->Process(words);
+        // StateTracker::PushBuffer 内部自动通过 GPFifo 解析并路由到 Engine3D
+        size_t consumed = g_nv_tracker->PushBuffer(words);
         LOG_DEBUG("NVGPU: GPFifo consumed %zu/%u words", consumed, num_words);
-
-        // 运行 StateTracker 处理待定的 draw
-        if (g_nv_tracker) {
-            g_nv_tracker->PushBuffer(words);
-        }
 
         // 返回提交信息
         // struct { u32 fence_id; u32 fence_value; }

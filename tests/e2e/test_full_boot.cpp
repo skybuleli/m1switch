@@ -119,8 +119,8 @@ TEST(E2E_FullBoot) {
     StateTracker tracker;
     tracker.SetMemory(&memory);
     ServiceNv_SetMemory(&memory);
-    ServiceNv_SetGpuFifo(&tracker.GetGPFifo());
     ServiceNv_SetTracker(&tracker);
+    // GPFifo 被 StateTracker 内部持有，NV service 通过 StateTracker 间接访问
 
     // ── 3. Load NRO ────────────────────────────────
     auto nro = MakeTestNRO();
