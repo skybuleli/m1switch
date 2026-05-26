@@ -83,42 +83,57 @@ public:
 };
 
 // ── APM (Performance) Service ───────────────────────────────
+// 主会话: OpenSession(cmd=0) → 返回子会话句柄
+// 子会话: GetPerformanceMode(cmd=0) / SetCpuBoostMode(cmd=1) / SetPerfConfig(cmd=2)
 class ApmService : public ServiceBase {
+    bool is_sub_session_;
 public:
-    ApmService() {
-        IpcManager::Instance().RegisterService("apm:", this);
-        IpcManager::Instance().RegisterService("apm:sys", this);
-    }
+    ApmService(bool is_sub = false) : is_sub_session_(is_sub) {}
+    void Register() { IpcManager::Instance().RegisterService("apm:", this); }
     const char* Name() const override { return "apm:"; }
 
     bool HandleCommand(u32 cmd_id, const u8* in, size_t in_sz,
                        u8* out, size_t* out_sz) override {
-        switch (cmd_id) {
-        case 0: // OpenSession — 返回子会话句柄作为 move handle
+        if (is_sub_session_) {
+            return HandleSubSession(cmd_id, in, in_sz, out, out_sz);
+        }
+        return HandleMainSession(cmd_id, in, in_sz, out, out_sz);
+    }
+
+    // 主会话: apmOpenSession → 创建子会话
+    bool HandleMainSession(u32 cmd_id, const u8* in, size_t in_sz,
+                            u8* out, size_t* out_sz) {
+        if (cmd_id == 0) {
             if (*out_sz >= 4) {
-                u32 sub_session = IpcManager::Instance().OpenSessionFor("apm:");
+                u32 sub_session = IpcManager::Instance().CreateSession(&g_apm_sub);
                 LOG_DEBUG("APM: OpenSession → sub_session 0x%x", sub_session);
                 std::memcpy(out, &sub_session, sizeof(sub_session));
                 *out_sz = 4;
-            }
+            } return true;
+        }
+        LOG_TRACE("APM: unhandled main cmd %u", cmd_id);
+        *out_sz = 0; return true;
+    }
+
+    // 子会话: GetPerformanceMode / SetCpuBoostMode / SetPerformanceConfiguration
+    bool HandleSubSession(u32 cmd_id, const u8* in, size_t in_sz,
+                           u8* out, size_t* out_sz) {
+        switch (cmd_id) {
+        case 0: // GetPerformanceMode → u32 (0=Normal, 1=Boost)
+            if (*out_sz >= 4) { u32 mode = 0; std::memcpy(out, &mode, 4); *out_sz = 4; }
             return true;
-        case 1: // GetPerformanceMode
-            if (*out_sz >= 4) {
-                u32 mode = 0; // 0 = Normal
-                std::memcpy(out, &mode, sizeof(mode));
-                *out_sz = 4;
-            }
-            return true;
-        case 2: // SetCpuBoostMode
-        case 3: // SetCpuBoostMode
+        case 1: // SetCpuBoostMode (输入 u32)
+        case 2: // SetPerformanceConfiguration (输入 u64)
             *out_sz = 0; return true;
         default:
-            LOG_TRACE("APM: unhandled cmd %u", cmd_id);
-            *out_sz = 0;
-            return true;
+            LOG_TRACE("APM: unhandled sub cmd %u", cmd_id);
+            *out_sz = 0; return true;
         }
     }
+
+    static ApmService g_apm_sub;
 };
+ApmService ApmService::g_apm_sub(true);
 
 // ── TIME (Clock) Service ────────────────────────────────────
 class TimeService : public ServiceBase {
@@ -154,9 +169,9 @@ public:
 // ── Global instances ────────────────────────────────────────
 static SetService  g_set_service;       // registers "set:"
 static SetService  g_setsys_service(true); // registers "set:sys"
-static ApmService  g_apm_service;
+static ApmService  g_apm_service;       // registers "apm:"
 static TimeService g_time_service;
 
-void ServiceSet_Init()  { LOG_INFO("SET service ready");  (void)g_set_service; }
+void ServiceSet_Init()  { LOG_INFO("SET service ready");  (void)g_set_service;  (void)g_apm_service.Register(); }
 void ServiceApm_Init()  { LOG_INFO("APM service ready");  (void)g_apm_service; }
 void ServiceTime_Init() { LOG_INFO("TIME service ready"); (void)g_time_service; }

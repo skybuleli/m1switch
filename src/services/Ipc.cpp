@@ -129,8 +129,18 @@ void IpcManager::RegisterService(const char* name, ServiceBase* service) {
 
 u32 IpcManager::Connect(const char* name) {
     std::lock_guard<std::mutex> lock(mutex_);
+    
+    // libnx 请求服务名可能带冒号或不带冒号，兼容两者
+    ServiceBase* svc = nullptr;
     auto it = services_.find(name);
-    ServiceBase* svc = (it != services_.end()) ? it->second : nullptr;
+    if (it != services_.end()) {
+        svc = it->second;
+    } else {
+        // 尝试带冒号: "apm" → "apm:"
+        std::string with_colon = std::string(name) + ":";
+        auto it2 = services_.find(with_colon);
+        if (it2 != services_.end()) svc = it2->second;
+    }
 
     u32 sid = next_session_++;
     Session s;
@@ -232,6 +242,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     const u8* raw_in = nullptr;
     size_t raw_in_size = 0;
 
+    u32 cmif_token = 0; // 保存请求中的 CMIF token，用于响应回填
     if (req_hdr.num_data_words > 0) {
         // 尝试解析 CmifInHeader
         CmifInHeader cmif_in = {};
@@ -240,6 +251,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         if (cmif_in.magic == CMIF_IN_MAGIC) {
             // ✅ CMIF 格式请求
             cmd_id = cmif_in.command_id;
+            cmif_token = cmif_in.token; // 保存 token 用于响应
             // raw_in 指向 CmifInHeader 之后的数据
             size_t cmif_end = cmif_off + sizeof(CmifInHeader);
             size_t dw_end = dw_off + req_hdr.num_data_words * sizeof(u32);
@@ -286,16 +298,21 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // 标记需要从服务输出中提取 move handle 的情形
     // SM::GetService, APM::OpenSession 等需返回子会话句柄的服务命令
     bool needs_move_handle = false;
-    if (session && session->service_name == "sm:" && cmd_id == 1) {
+    auto svcName = [&]() -> std::string {
+        // 兼容带冒号和不带冒号的服务名
+        auto n = session->service_name;
+        if (n.back() == ':') return n.substr(0, n.size()-1);
+        return n;
+    };
+    std::string sname = svcName();
+    if (sname == "sm" && cmd_id == 1) {
         needs_move_handle = true;
-    } else if (session && session->service_name == "apm:" && cmd_id == 0) {
-        needs_move_handle = true;
-    } else if (session && session->service_name == "apm:sys" && cmd_id == 0) {
+    } else if ((sname == "apm" || sname == "apm:sys") && cmd_id == 0) {
         needs_move_handle = true;
     }
 
     // SM::Initialize (cmd=0): 返回会话本身的句柄作为 copy handle
-    if (session && session->service_name == "sm:" && cmd_id == 0) {
+    if (sname == "sm" && cmd_id == 0) {
         if (resp_remaining >= 4 + 4) {
             LOG_DEBUG("SM: Initialize returning session_handle 0x%x", session_handle);
             shdr_pos = resp_ptr;
@@ -391,9 +408,10 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
             memmove(response + cmif_out_end, response + raw_off, raw_out_max);
         }
         
-        // 写入 CmifOutHeader
+        // 写入 CmifOutHeader（回填请求中的 token）
         CmifOutHeader cmif_out = {};
         cmif_out.magic  = CMIF_OUT_MAGIC;
+        cmif_out.token  = cmif_token; // 必须匹配请求 token
         cmif_out.result = 0; // 成功
         std::memcpy(response + cmif_out_off, &cmif_out, sizeof(cmif_out));
         
