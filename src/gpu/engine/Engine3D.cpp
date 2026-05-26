@@ -457,8 +457,36 @@ void Engine3D::HandleRenderTarget(u32 index, u32 value) {
 }
 
 void Engine3D::HandleViewport(u32 index, u32 value) {
-    u32 i = index % 16;
-    LOG_TRACE("Viewport[%u] = 0x%x", i, value);
+    // ViewportTransform: 0x280 + 16组 × 6个f32寄存器
+    // 每组 viewport 有: scale_x(0), scale_y(1), scale_z(2),
+    //                    translate_x(3), translate_y(4), translate_z(5), swizzle(6+)
+    // Linux 内核 Tegra X1: 每组 6-8 个寄存器
+    u32 vp_index = index / 8;   // viewport 序号 (0..15)
+    u32 sub = index % 8;         // 子寄存器偏移
+
+    if (vp_index >= MAX_VIEWPORTS) {
+        LOG_WARN("Viewport[%u] 超出范围 (index=%u)", vp_index, index);
+        return;
+    }
+
+    // value 是 u32, 需要重新解释为 f32
+    f32 fval;
+    std::memcpy(&fval, &value, sizeof(fval));
+
+    switch (sub) {
+    case 0: state_.viewports[vp_index].scale_x = fval; break;
+    case 1: state_.viewports[vp_index].scale_y = fval; break;
+    case 2: state_.viewports[vp_index].scale_z = fval; break;
+    case 3: state_.viewports[vp_index].translate_x = fval; break;
+    case 4: state_.viewports[vp_index].translate_y = fval; break;
+    case 5: state_.viewports[vp_index].translate_z = fval; break;
+    case 6: state_.viewports[vp_index].swizzle = value; break;
+    default:
+        LOG_TRACE("Viewport[%u].sub[%u] = 0x%x (未使用)", vp_index, sub, value);
+        break;
+    }
+
+    LOG_TRACE("Viewport[%u].sub[%u] = 0x%x (%.4f)", vp_index, sub, value, fval);
 }
 
 void Engine3D::HandleScissor(u32 index, u32 value) {

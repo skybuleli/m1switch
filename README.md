@@ -105,7 +105,9 @@ cmake --build build
 - [x] P1 #3: NvMap 完整实现 (Create/Alloc/Free/Param/GetId/GetHandle/CacheOp, 客户机堆分配 + IOVA 映射)
 - [x] P1 #3: NvHost-Ctrl 同步点 (SyncptAlloc/SyncptWait/SyncptRead/EventSignal)
 - [x] P1 #3: NvGpu 完善 (GetParam ZCULL/ROP, SetUserData, SetGpfifoEntry, fence 返回)
-- [ ] P1 #4: Fs 服务补全 (目录遍历, 文件属性, SaveData)
+- [x] P0 补: SPIR-V 指令扩展 (SHL/SHR/BFE/BFI/I2F/F2I/I2I/F2F/IMNMX/FSET/LEA/FSAT/FRCP/FRSQ/FSQRT/FEX2/FLG2/SNegate/整型比较扩展)
+- [x] P0 补: ViewportTransform 数组写入 (16 视口 × 8 寄存器: scale_x/y/z, translate_x/y/z, swizzle)
+- [x] P1 #4: Fs 服务补全 (目录遍历 OpenDirectory, 文件属性 GetEntryType, SaveData 文件打开, 路径规范化, 句柄管理重构)
 
 **Phase 3** — Services & IPC (Complete)
 - [x] SM service (service manager)

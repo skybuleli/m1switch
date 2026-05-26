@@ -162,13 +162,33 @@ private:
     u32 EmitConvertSToF(u32 result_type, u32 op);
     u32 EmitBitcast(u32 result_type, u32 op);
 
+    u32 EmitShiftLeftLogical(u32 type, u32 base, u32 shift);
+    u32 EmitShiftRightLogical(u32 type, u32 base, u32 shift);
+    u32 EmitShiftRightArithmetic(u32 type, u32 base, u32 shift);
+    u32 EmitBitwiseOr(u32 type, u32 op1, u32 op2);
+    u32 EmitBitwiseXor(u32 type, u32 op1, u32 op2);
+    u32 EmitBitwiseAnd(u32 type, u32 op1, u32 op2);
+    u32 EmitBitFieldInsert(u32 type, u32 base, u32 insert, u32 offset, u32 count);
+    u32 EmitBitFieldSExtract(u32 type, u32 base, u32 offset, u32 count);
+    u32 EmitBitFieldUExtract(u32 type, u32 base, u32 offset, u32 count);
+    u32 EmitNot(u32 type, u32 op);
+    u32 EmitIsInf(u32 result_type, u32 op);
+    u32 EmitIsNan(u32 result_type, u32 op);
+
     u32 EmitFOrdGreaterThan(u32 result_type, u32 op1, u32 op2);
     u32 EmitFOrdLessThan(u32 result_type, u32 op1, u32 op2);
     u32 EmitFOrdEqual(u32 result_type, u32 op1, u32 op2);
     u32 EmitFUnordNotEqual(u32 result_type, u32 op1, u32 op2);
     u32 EmitSLessThan(u32 result_type, u32 op1, u32 op2);
     u32 EmitSGreaterThan(u32 result_type, u32 op1, u32 op2);
+u32 EmitULessThan(u32 result_type, u32 op1, u32 op2);
+    u32 EmitUGreaterThan(u32 result_type, u32 op1, u32 op2);
+    u32 EmitULessThanEqual(u32 result_type, u32 op1, u32 op2);
+    u32 EmitUGreaterThanEqual(u32 result_type, u32 op1, u32 op2);
+    u32 EmitSLessThanEqual(u32 result_type, u32 op1, u32 op2);
+    u32 EmitSGreaterThanEqual(u32 result_type, u32 op1, u32 op2);
     u32 EmitIEqual(u32 result_type, u32 op1, u32 op2);
+    u32 EmitINotEqual(u32 result_type, u32 op1, u32 op2);
 
     u32 EmitSelect(u32 result_type, u32 condition, u32 true_val, u32 false_val);
     u32 EmitCompositeConstruct(u32 result_type, const std::vector<u32>& constituents);
@@ -304,8 +324,25 @@ namespace SpirvOp {
     constexpr u32 IMul                     = 132;
     constexpr u32 SNegate                  = 126;
     constexpr u32 SLessThan                = 139;
+    constexpr u32 SLessThanEqual           = 140;
     constexpr u32 SGreaterThan             = 141;
+    constexpr u32 SGreaterThanEqual        = 142;
     constexpr u32 IEqual                   = 143;
+    constexpr u32 INotEqual                = 144;
+    constexpr u32 ULessThan                = 145;
+    constexpr u32 ULessThanEqual           = 146;
+    constexpr u32 UGreaterThan             = 147;
+    constexpr u32 UGreaterThanEqual        = 148;
+    constexpr u32 ShiftLeftLogical         = 165;
+    constexpr u32 ShiftRightLogical        = 166;
+    constexpr u32 ShiftRightArithmetic     = 167;
+    constexpr u32 BitwiseOr                = 170;
+    constexpr u32 BitwiseXor              = 171;
+    constexpr u32 BitwiseAnd               = 172;
+    constexpr u32 BitFieldInsert            = 175;
+    constexpr u32 BitFieldSExtract         = 176;
+    constexpr u32 BitFieldUExtract         = 177;
+    constexpr u32 Not                     = 283;
     constexpr u32 Select                   = 169;
     constexpr u32 CompositeConstruct        = 80;
     constexpr u32 CompositeExtract          = 81;
@@ -335,4 +372,5 @@ namespace GlslStd450 {
     constexpr u32 InverseSqrt = 32;
     constexpr u32 FMin        = 37;
     constexpr u32 FMax        = 40;
+    constexpr u32 FClamp      = 43;
 }
