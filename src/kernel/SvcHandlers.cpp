@@ -69,7 +69,10 @@ SVC(SvcSetHeapSize) {
         u64 base = g_mem->GetHeapBase();
         LOG_INFO("SvcSetHeapSize: result=%d base=0x%llx", (int)r, base);
         // Horizon OS 规范: x0=Result, x1=heap_addr
-        state->x[1] = base;
+        // 在 native exec 模式下，guest 运行在 host 地址空间，
+        // 所以需要返回 host 绝对地址，而非 guest 虚拟地址。
+        u64 host_base = g_mem->BaseAddress() + base;
+        state->x[1] = host_base;
         Ret(state, 0);
     } else {
         LOG_INFO("SvcSetHeapSize: skipping (size=%llx)", size);

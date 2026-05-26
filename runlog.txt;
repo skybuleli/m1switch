@@ -1,0 +1,107 @@
+05:16:45.621 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'acc:u0' registered @ 0x102b2d478
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'acc:u1' registered @ 0x102b2d478
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'acc:su' registered @ 0x102b2d478
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'appletOE:' registered @ 0x102b2d480
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'appletAE:' registered @ 0x102b2d480
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'applet' registered @ 0x102b2d4d8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ns:' registered @ 0x102b2d4e0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ns:dev' registered @ 0x102b2d4e0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ns:am2' registered @ 0x102b2d4e0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ldr:' registered @ 0x102b2d4e8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ldr:pm' registered @ 0x102b2d4e8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'audout:' registered @ 0x102b2d4f0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'audren:' registered @ 0x102b2d4f0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'fsp-srv:' registered @ 0x102b2d5a0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'fs:' registered @ 0x102b2d5a0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'hid:' registered @ 0x102b2d5b0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'hidbus:' registered @ 0x102b2d5b0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nvdrv:' registered @ 0x102b2d6a0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nvmap:' registered @ 0x102b2d6a8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nvdrv#' registered @ 0x102b2d6b0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nvhost-ctrl:' registered @ 0x102b2d6d0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'pcv:' registered @ 0x102b2d740
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'psc:' registered @ 0x102b2d748
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'pm:' registered @ 0x102b2d750
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'pm:bm' registered @ 0x102b2d750
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nifm:' registered @ 0x102b2d758
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nifm:oa' registered @ 0x102b2d758
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ro:' registered @ 0x102b2d760
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'erpt:' registered @ 0x102b2d768
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'erpt:s' registered @ 0x102b2d768
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'erpt:c' registered @ 0x102b2d768
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'fatal:' registered @ 0x102b2d770
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'fatal:p' registered @ 0x102b2d770
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'btm:' registered @ 0x102b2d778
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'btm:sys' registered @ 0x102b2d778
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nfc:' registered @ 0x102b2d780
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nfc:mf' registered @ 0x102b2d780
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nfc:user' registered @ 0x102b2d780
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'set:' registered @ 0x102b2d788
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'set:sys' registered @ 0x102b2d798
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'time:' registered @ 0x102b2d7b8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'time:a' registered @ 0x102b2d7b8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'sm:' registered @ 0x102b2d7c0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'sm:m:' registered @ 0x102b2d7c0
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'spl:' registered @ 0x102b2d7c8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'spl:mig' registered @ 0x102b2d7c8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'spl:fs' registered @ 0x102b2d7c8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'vi:' registered @ 0x102b2d7d8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'vi:m' registered @ 0x102b2d7d8
+05:16:45.622 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'vi:u' registered @ 0x102b2d7d8
+05:16:45.623 [INFO ] [0x103] Log.cpp:17:Init Logger initialized (level=1)
+05:16:45.623 [INFO ] [0x103] headless_main.cpp:89:main === Headless Runner ===
+05:16:45.623 [INFO ] [0x103] headless_main.cpp:90:main NRO: /Users/liliang/m1switch/hello_colours.nro
+05:16:45.623 [INFO ] [0x103] headless_main.cpp:91:main Timeout: 6s
+05:16:45.623 [INFO ] [0x103] Memory.cpp:25:Memory Guest memory base: 0x300000000 (4 GiB virtual address space)
+05:16:45.658 [INFO ] [0x103] NroLoader.cpp:127:LoadFromBuffer NRO: magic=0x304f524e size=6885376
+05:16:45.658 [INFO ] [0x103] NroLoader.cpp:128:LoadFromBuffer   .text:   offset=0 size=4743168
+05:16:45.658 [INFO ] [0x103] NroLoader.cpp:129:LoadFromBuffer   .rodata: offset=4743168 size=1859584
+05:16:45.658 [INFO ] [0x103] NroLoader.cpp:130:LoadFromBuffer   .data:   offset=6602752 size=282624
+05:16:45.658 [INFO ] [0x103] NroLoader.cpp:131:LoadFromBuffer   .bss:   size=94208
+05:16:45.658 [INFO ] [0x103] NroLoader.cpp:141:LoadFromBuffer MOD0 @ 0x118
+05:16:45.658 [INFO ] [0x103] NroLoader.cpp:147:LoadFromBuffer MOD0: dyn_off=0x5e7270 (abs=0x5e7388)
+05:16:45.658 [INFO ] [0x103] NroLoader.cpp:181:LoadFromBuffer DYN: rela=0x5e74e8 relasz=0x640b0 relaent=0x18 symtab=0x5e7498 strtab=0x5e74e0
+05:16:45.659 [INFO ] [0x103] NativeExec.cpp:41:EnsureFixedTls Fixed TLS at 0x200000000 (8 KB)
+05:16:45.662 [INFO ] [0x103] NativeExec.cpp:93:PatchSVCs Patched 184 mrs tpidrro_el0 → fixed TLS 0x200000000
+05:16:45.662 [INFO ] [0x103] NroLoader.cpp:236:LoadFromBuffer Patched 28 SVCs
+05:16:45.662 [INFO ] [0x103] NroLoader.cpp:250:LoadFromBuffer Applying 17074 relocations...
+05:16:45.663 [INFO ] [0x103] NroLoader.cpp:283:LoadFromBuffer Applied 17074 relocations
+05:16:45.663 [INFO ] [0x103] NroLoader.cpp:296:LoadFromBuffer Patched libnx crt0 relocation call at +0xD8
+05:16:45.663 [INFO ] [0x103] NroLoader.cpp:316:LoadFromBuffer PATCH: 0x44bb28 return 0 (off=0x44bb28, inst=0x52800000)
+05:16:45.663 [INFO ] [0x103] NroLoader.cpp:326:LoadFromBuffer PATCH: 0x44b5a8-0x44b5ac → MOVZ W0,#0; RET
+05:16:45.663 [INFO ] [0x103] NroLoader.cpp:343:LoadFromBuffer PATCH: NOPed 6 CBZ/CBNZ in init wrapper
+05:16:45.663 [INFO ] [0x103] NroLoader.cpp:360:LoadFromBuffer PATCH: *data+0x7BD0 = 0x40691100 (first_word=8)
+05:16:45.663 [INFO ] [0x103] NroLoader.cpp:370:LoadFromBuffer Protected .text as RX (4751360 bytes)
+05:16:45.663 [INFO ] [0x103] NroLoader.cpp:376:LoadFromBuffer Protected .rodata as R (1867776 bytes)
+05:16:45.663 [INFO ] [0x103] NroLoader.cpp:395:LoadFromBuffer Entry: 0x40000000 (libnx image base, DT_INIT=0x140)
+05:16:45.683 [INFO ] [0x103] headless_main.cpp:116:main Entry: 0x40000000, 3 seg(s)
+05:16:45.683 [INFO ] [0x103] headless_main.cpp:127:main MEM_VERIFY: .text[0] = 0x14000020
+05:16:45.683 [INFO ] [0x103] headless_main.cpp:136:main MEM_VERIFY: .text end[0x40485fff] = 0x00
+05:16:45.683 [INFO ] [0x103] headless_main.cpp:146:main MEM_VERIFY: .rodata[0x40486000] = 00000000...
+05:16:45.683 [INFO ] [0x103] headless_main.cpp:153:main Stack: top=0xc0000000 size=0x100000
+05:16:45.683 [INFO ] [0x103] headless_main.cpp:161:main Heap: base=0x80000000 size=0x4000000 result=0
+05:16:45.693 [INFO ] [0x103] headless_main.cpp:169:main Heap: 67108864 bytes pre-touched
+05:16:45.693 [INFO ] [0x103] SvcHandlers.cpp:1014:SvcHandlers_RegisterAll Registered 80 SVC handlers
+05:16:45.693 [INFO ] [0x103] SvcTable.cpp:19:SvcTable_Init SVC table initialized (256 entries)
+05:16:45.693 [INFO ] [0x103] headless_main.cpp:181:main Initializing system services...
+05:16:45.693 [INFO ] [0x103] Sm.cpp:165:ServiceSm_Init SM service ready
+05:16:45.693 [INFO ] [0x103] Spl.cpp:82:ServiceSpl_Init SPL service ready
+05:16:45.693 [INFO ] [0x103] Account.cpp:73:ServiceAccount_Init Account service ready
+05:16:45.693 [INFO ] [0x103] Am.cpp:537:ServiceAm_Init AM service ready
+05:16:45.693 [INFO ] [0x103] Am.cpp:538:ServiceNs_Init NS service ready
+05:16:45.693 [INFO ] [0x103] Am.cpp:539:ServiceLdr_Init LDR service ready
+05:16:45.693 [INFO ] [0x103] Fs.cpp:401:ServiceFs_Init FS 服务就绪
+05:16:45.693 [INFO ] [0x103] Hid.cpp:314:ServiceHid_Init HID 服务就绪 (Npad 共享内存布局)
+05:16:45.693 [INFO ] [0x103] Vi.cpp:440:ServiceVi_Init VI 服务就绪 (BufferQueue 双缓冲)
+05:16:45.693 [INFO ] [0x103] Set.cpp:175:ServiceSet_Init SET service ready
+05:16:45.693 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'apm:' registered @ 0x102b2d7a8
+05:16:45.693 [INFO ] [0x103] Set.cpp:176:ServiceApm_Init APM service ready
+05:16:45.693 [INFO ] [0x103] Set.cpp:177:ServiceTime_Init TIME service ready
+05:16:45.693 [INFO ] [0x103] AudioOut.cpp:213:ServiceAudioOut_Init AudioOut service ready
+05:16:45.693 [INFO ] [0x103] Pcv.cpp:206:ServicePcv_Init PCV ready
+05:16:45.693 [INFO ] [0x103] headless_main.cpp:196:main All system services initialized
+05:16:45.693 [INFO ] [0x103] headless_main.cpp:207:main Main thread handle=0xd001
+05:16:45.693 [INFO ] [0x103] headless_main.cpp:225:main PATCH: *0x340653bd0 = 0x406ab000 (first_word=8)
+05:16:45.693 [INFO ] [0x103] headless_main.cpp:231:main PATCH: 0x44bb28: MOVZ W0,#0x1 → MOVZ W0,#0
+05:16:45.693 [INFO ] [0x103] headless_main.cpp:242:main PATCH: 0x44b5ac: B trampoline → RET 0
+---EXIT:138---

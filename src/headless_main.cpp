@@ -206,9 +206,20 @@ int main(int argc, char** argv) {
     u32 main_handle = KernelHandleTable().Create(main_thread);
     LOG_INFO("Main thread handle=0x%x", main_handle);
 
-    // ── 5a. NOP init wrapper 的 CBNZ at 0x45655c ────
-    // memory_.Write 用绝对 guest 地址，不受 Pointer 问题影响
-    {
+    // ── 6. Install SIGTRAP (必须在 patches 之前, 防止读未映射内存时静默崩溃) ──
+    g_sig_handler.SetSvcDispatch([](u32 svc, GuestThreadState* st) {
+        SvcHandler_Dispatch(svc, st);
+    });
+    g_sig_handler.Install();
+
+    // ── 7. NV wiring ────────────────────────────────
+    ServiceNv_SetMemory(&memory);
+    ServiceNv_SetTracker(&tracker);
+
+    // ── 5a. NOP init wrapper 的 CBNZ at 0x45655c (仅大 NRO 适用) ──
+    // NOTE: 这些补丁针对 hello_colours 等大型 NRO, 小型测试 NRO 会跳过
+    // 安全检查: 仅当 .text 段覆盖目标地址时才尝试读取
+    if (info.segments.size() >= 1 && info.segments[0].size > 0x45655c) {
         u32 val = 0;
         if (memory.Read(0x4045655c, &val) == Result::Success &&
             (val == 0x35000600)) {
@@ -219,31 +230,24 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ── 5b. 修正 libnx 全局指针 + 绕过 applet 失败路径 ──
+    // ── 5b. 修正 libnx 全局指针 + 绕过 applet 失败路径 (仅大 NRO 适用) ──
     {
-        // NRO 文本段在 guest 绝对地址 0x340000000
-        // segment 地址是 NRO_TEXT_BASE(0x40000000) 相对的
-        // Memory::Write 使用绝对地址: memory.BaseAddress() + NRO_TEXT_BASE + nro_off
-        const u64 BASE = memory.BaseAddress() + 0x40000000; // = 0x340000000
-        if (info.segments.size() >= 3) {
+        const u64 BASE = memory.BaseAddress() + 0x40000000;
+        if (info.segments.size() >= 3 && info.segments[0].size > 0x45655c) {
             u64 data_addr = info.segments[2].guest_address;
             u64 bss_addr  = info.bss_address;
             u64 bss_sz    = info.bss_size;
 
-            // 1) 全局指针: .data+0x7BD0 → 指向结构 {first_word=8}
             u64 struct_addr = bss_addr + bss_sz;
             memory.Write<u32>(struct_addr, 8);
             u64 ptr_addr = BASE + (data_addr - 0x40000000) + 0x7BD0;
             memory.Write<u64>(ptr_addr, struct_addr);
             LOG_INFO("PATCH: *0x%llx = 0x%llx (first_word=8)", ptr_addr, struct_addr);
 
-            // 2) 成功路径 (0x44bafc) 最终返回 MOVZ W0,#0x1 (0x52800020)
-            //    → patch 为 MOVZ W0,#0 (0x52800000)
             u64 patch_ret = BASE + 0x4bb28;
-            memory.Write<u32>(patch_ret, 0x52800000); // MOVZ W0, #0
+            memory.Write<u32>(patch_ret, 0x52800000);
             LOG_INFO("PATCH: 0x44bb28: MOVZ W0,#0x1 → MOVZ W0,#0");
 
-            // 3) 失败路径 (0x44b5ac): tail-call B 0x449dc0 → B trampoline(RET 0)
             u64 tramp_addr = struct_addr + 16;
             u32 tramp[2] = {0x52800000, 0xD65F03C0};
             memory.Write<u32>(tramp_addr, tramp[0]);
@@ -255,10 +259,8 @@ int main(int argc, char** argv) {
                 LOG_INFO("PATCH: 0x44b5ac: B trampoline → RET 0");
             }
 
-            // 4) NOP 所有 init wrapper 中的 CBNZ 检查
-            //    init wrapper 在 0x45655c–0x4565f0 区域有多个 CBNZ
             for (u64 a = 0x456558; a < 0x4565f0; a += 4) {
-                if (a == 0x456558) continue; // 跳过 BL
+                if (a == 0x456558) continue;
                 u64 abs_a = BASE + a;
                 u32 inst;
                 if (Failed(memory.Read(abs_a, &inst))) continue;
@@ -268,8 +270,6 @@ int main(int argc, char** argv) {
                 }
             }
 
-            // ── 5) 双写 + 刷新指令缓存 ──────────────
-            // 文本段在 0x40000000 和 0x300000000+0x40000000 两处映射，都写入
             u64 base_t[2] = {0x40000000, memory.BaseAddress() + 0x40000000};
             for (int bi = 0; bi < 2; bi++) {
                 memory.Write<u32>(base_t[bi] + 0x4bb28, 0x52800000);
@@ -278,7 +278,6 @@ int main(int argc, char** argv) {
                 if (boff % 4 == 0)
                     memory.Write<u32>(bpc, 0x14000000 | (((u32)(boff / 4)) & 0x3FFFFFF));
             }
-            // 直接从 base_ 算 host 地址刷新 icache
             u8* hp = (u8*)memory.BasePointer();
             if (hp) {
                 char* cp = (char*)(hp + 0x440000);
@@ -287,16 +286,6 @@ int main(int argc, char** argv) {
             }
         }
     }
-
-    // ── 6. NV wiring ────────────────────────────────
-    ServiceNv_SetMemory(&memory);
-    ServiceNv_SetTracker(&tracker);
-
-    // ── 7. Install SIGTRAP ──────────────────────────
-    g_sig_handler.SetSvcDispatch([](u32 svc, GuestThreadState* st) {
-        SvcHandler_Dispatch(svc, st);
-    });
-    g_sig_handler.Install();
 
     // ── 7.5 初始化调试框架 ──────────────────────────
     TraceEngine::Instance().EnableChannel(TraceChannel::SVC, true);

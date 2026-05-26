@@ -1,0 +1,91 @@
+05:33:54.329 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'acc:u0' registered @ 0x1008d1478
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'acc:u1' registered @ 0x1008d1478
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'acc:su' registered @ 0x1008d1478
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'appletOE:' registered @ 0x1008d1480
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'appletAE:' registered @ 0x1008d1480
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'applet' registered @ 0x1008d14e0
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ns:' registered @ 0x1008d14e8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ns:dev' registered @ 0x1008d14e8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ns:am2' registered @ 0x1008d14e8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ldr:' registered @ 0x1008d14f0
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ldr:pm' registered @ 0x1008d14f0
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'audout:' registered @ 0x1008d14f8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'audren:' registered @ 0x1008d14f8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'fsp-srv:' registered @ 0x1008d15a8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'fs:' registered @ 0x1008d15a8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'hid:' registered @ 0x1008d15b8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'hidbus:' registered @ 0x1008d15b8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nvdrv:' registered @ 0x1008d16a8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nvmap:' registered @ 0x1008d16b0
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nvdrv#' registered @ 0x1008d16b8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nvhost-ctrl:' registered @ 0x1008d16d8
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'pcv:' registered @ 0x1008d1748
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'psc:' registered @ 0x1008d1750
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'pm:' registered @ 0x1008d1758
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'pm:bm' registered @ 0x1008d1758
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nifm:' registered @ 0x1008d1760
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nifm:oa' registered @ 0x1008d1760
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'ro:' registered @ 0x1008d1768
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'erpt:' registered @ 0x1008d1770
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'erpt:s' registered @ 0x1008d1770
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'erpt:c' registered @ 0x1008d1770
+05:33:54.330 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'fatal:' registered @ 0x1008d1778
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'fatal:p' registered @ 0x1008d1778
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'btm:' registered @ 0x1008d1780
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'btm:sys' registered @ 0x1008d1780
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nfc:' registered @ 0x1008d1788
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nfc:mf' registered @ 0x1008d1788
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'nfc:user' registered @ 0x1008d1788
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'set:' registered @ 0x1008d1790
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'set:sys' registered @ 0x1008d17a0
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'time:' registered @ 0x1008d17c0
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'time:a' registered @ 0x1008d17c0
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'sm:' registered @ 0x1008d17c8
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'sm:m:' registered @ 0x1008d17c8
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'spl:' registered @ 0x1008d17d0
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'spl:mig' registered @ 0x1008d17d0
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'spl:fs' registered @ 0x1008d17d0
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'vi:' registered @ 0x1008d17e0
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'vi:m' registered @ 0x1008d17e0
+05:33:54.331 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'vi:u' registered @ 0x1008d17e0
+05:33:54.332 [INFO ] [0x103] Log.cpp:17:Init Logger initialized (level=1)
+05:33:54.332 [INFO ] [0x103] headless_main.cpp:89:main === Headless Runner ===
+05:33:54.332 [INFO ] [0x103] headless_main.cpp:90:main NRO: test_heap.nro
+05:33:54.332 [INFO ] [0x103] headless_main.cpp:91:main Timeout: 5s
+05:33:54.332 [INFO ] [0x103] Memory.cpp:25:Memory Guest memory base: 0x300000000 (4 GiB virtual address space)
+05:33:54.332 [INFO ] [0x103] NroLoader.cpp:127:LoadFromBuffer NRO: magic=0x304f524e size=784
+05:33:54.332 [INFO ] [0x103] NroLoader.cpp:128:LoadFromBuffer   .text:   offset=272 size=40
+05:33:54.332 [INFO ] [0x103] NroLoader.cpp:129:LoadFromBuffer   .rodata: offset=784 size=0
+05:33:54.332 [INFO ] [0x103] NroLoader.cpp:130:LoadFromBuffer   .data:   offset=784 size=0
+05:33:54.332 [INFO ] [0x103] NroLoader.cpp:131:LoadFromBuffer   .bss:   size=0
+05:33:54.332 [INFO ] [0x103] NroLoader.cpp:141:LoadFromBuffer MOD0 @ 0x0
+05:33:54.332 [INFO ] [0x103] NativeExec.cpp:41:EnsureFixedTls Fixed TLS at 0x200000000 (8 KB)
+05:33:54.332 [INFO ] [0x103] NroLoader.cpp:236:LoadFromBuffer Patched 2 SVCs
+05:33:54.332 [INFO ] [0x103] NroLoader.cpp:366:LoadFromBuffer Protected .text as RX (16384 bytes)
+05:33:54.332 [INFO ] [0x103] NroLoader.cpp:397:LoadFromBuffer Entry: 0x40000000 (text_addr, text_start=0x110)
+05:33:54.332 [INFO ] [0x103] headless_main.cpp:116:main Entry: 0x40000000, 1 seg(s)
+05:33:54.332 [INFO ] [0x103] headless_main.cpp:127:main MEM_VERIFY: .text[0] = 0xd2800000
+05:33:54.332 [INFO ] [0x103] headless_main.cpp:136:main MEM_VERIFY: .text end[0x40000027] = 0x14
+05:33:54.332 [INFO ] [0x103] headless_main.cpp:153:main Stack: top=0xc0000000 size=0x100000
+05:33:54.332 [INFO ] [0x103] headless_main.cpp:161:main Heap: base=0x80000000 size=0x4000000 result=0
+05:33:54.340 [INFO ] [0x103] headless_main.cpp:169:main Heap: 67108864 bytes pre-touched
+05:33:54.340 [INFO ] [0x103] SvcHandlers.cpp:1014:SvcHandlers_RegisterAll Registered 80 SVC handlers
+05:33:54.340 [INFO ] [0x103] SvcTable.cpp:19:SvcTable_Init SVC table initialized (256 entries)
+05:33:54.340 [INFO ] [0x103] headless_main.cpp:181:main Initializing system services...
+05:33:54.340 [INFO ] [0x103] Sm.cpp:165:ServiceSm_Init SM service ready
+05:33:54.340 [INFO ] [0x103] Spl.cpp:82:ServiceSpl_Init SPL service ready
+05:33:54.340 [INFO ] [0x103] Account.cpp:73:ServiceAccount_Init Account service ready
+05:33:54.340 [INFO ] [0x103] Am.cpp:567:ServiceAm_Init AM service ready
+05:33:54.340 [INFO ] [0x103] Am.cpp:568:ServiceNs_Init NS service ready
+05:33:54.340 [INFO ] [0x103] Am.cpp:569:ServiceLdr_Init LDR service ready
+05:33:54.340 [INFO ] [0x103] Fs.cpp:401:ServiceFs_Init FS 服务就绪
+05:33:54.340 [INFO ] [0x103] Hid.cpp:314:ServiceHid_Init HID 服务就绪 (Npad 共享内存布局)
+05:33:54.340 [INFO ] [0x103] Vi.cpp:440:ServiceVi_Init VI 服务就绪 (BufferQueue 双缓冲)
+05:33:54.340 [INFO ] [0x103] Set.cpp:175:ServiceSet_Init SET service ready
+05:33:54.340 [INFO ] [0x103] Ipc.cpp:127:RegisterService IPC: service 'apm:' registered @ 0x1008d17b0
+05:33:54.340 [INFO ] [0x103] Set.cpp:176:ServiceApm_Init APM service ready
+05:33:54.340 [INFO ] [0x103] Set.cpp:177:ServiceTime_Init TIME service ready
+05:33:54.340 [INFO ] [0x103] AudioOut.cpp:213:ServiceAudioOut_Init AudioOut service ready
+05:33:54.340 [INFO ] [0x103] Pcv.cpp:206:ServicePcv_Init PCV ready
+05:33:54.340 [INFO ] [0x103] headless_main.cpp:196:main All system services initialized
+05:33:54.340 [INFO ] [0x103] headless_main.cpp:207:main Main thread handle=0xd001

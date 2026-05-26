@@ -123,6 +123,8 @@ cmake --build build
 - [x] AudioOut service
 - [x] Pcv/Spl services
 - [x] IPC forwarding infrastructure
+- [x] Applet 服务全面测试 (41 个 applet 子命令, gen_applet_test.py)
+- [x] headless runner 修复 (信号处理器安装顺序, SVC 地址转换, SVC 编号修正)
 
 **Phase 4** — Game Loader (Complete)
 - [x] NRO loader (homebrew)

@@ -1,0 +1,926 @@
+https://raw.githubusercontent.com/switchbrew/libnx/master/nx/source/services/applet.c
+
+#include <string.h>
+#include "service_guard.h"
+#include "arm/counter.h"
+#include "services/applet.h"
+#include "runtime/env.h"
+#include "runtime/hosversion.h"
+#include "runtime/diag.h"
+
+__attribute__((weak)) u32 __nx_applet_type = AppletType_Default;
+__attribute__((weak)) bool __nx_applet_auto_notifyrunning = true;
+__attribute__((weak)) AppletAttribute __nx_applet_AppletAttribute;
+/// When set, controls the PerformanceConfiguration passed to apmSetPerformanceConfiguration during app startup, where the array index is the PerformanceMode.
+__attribute__((weak)) u32 __nx_applet_PerformanceConfiguration[2] = {/*0x92220008*//*0x20004*//*0x92220007*/0, 0};
+//// Controls whether to use applet exit cmds during \ref appletExit.  0 (default): Only run exit cmds when running under a NSO. 1: Use exit cmds regardless. >1: Skip exit cmds.
+__attribute__((weak)) u32 __nx_applet_exit_mode = 0;
+/// Controls the timeout in nanoseconds to use during LibraryApplet initialization in appletInitialize, with diagAbortWithResult being used if the timeout is reached.
+__attribute__((weak)) u64 __nx_applet_init_timeout = 864000000000000000ULL;
+
+static Service g_appletSrv;
+static Service g_appletProxySession;
+static bool g_appletLeftInitialized;
+static bool g_appletExitProcessFlag;
+static Result g_appletExitProcessResult;
+
+// From Get*Functions.
+static Service g_appletIAppletCommonFunctions;
+
+static Service g_appletIFunctions;
+
+static Service g_appletIGlobalStateController;
+static Service g_appletIApplicationCreator;
+
+static Service g_appletILibraryAppletSelfAccessor;
+static Service g_appletIProcessWindingController;
+
+static Service g_appletILibraryAppletCreator;
+static Service g_appletICommonStateGetter;
+static Service g_appletISelfController;
+static Service g_appletIWindowController;
+static Service g_appletIAudioController;
+static Service g_appletIDisplayController;
+static Service g_appletIDebugFunctions;
+
+static Event g_appletMessageEvent;
+
+static u64 g_appletResourceUserId = 0;
+static u8  g_appletOperationMode;
+static u32 g_appletPerformanceMode;
+static u8  g_appletFocusState;
+
+static bool g_appletNotifiedRunning = 0;
+
+static AppletHookCookie g_appletFirstHook;
+
+static TransferMemory g_appletRecordingTmem;
+static u32 g_appletRecordingInitialized;
+
+static TransferMemory g_appletCopyrightTmem;
+static bool g_appletCopyrightInitialized;
+
+static Event g_appletSuspendedTickEvent;
+static u64 g_appletInitTickBase;
+static u64 g_appletSuspendedTick;
+static bool g_appletSuspendedTickInitialized;
+
+static Event g_appletLibraryAppletLaunchableEvent;
+
+static AppletThemeColorType g_appletThemeColorType = AppletThemeColorType_Default;
+
+static ApmCpuBoostMode g_appletCpuBoostMode = ApmCpuBoostMode_Normal;
+
+static AppletInfo g_appletInfo;
+static bool g_appletInfoInitialized;
+
+static Result _appletCmdGetHandle(Service* srv, Handle* handle_out, u32 cmd_id);
+static Result _appletCmdGetEvent(Service* srv, Event* out_event, bool autoclear, u32 cmd_id);
+static Result _appletCmdGetSession(Service* srv, Service* srv_out, u32 cmd_id);
+
+static Result _appletOpenLibraryAppletProxy(Service* srv_out, Handle prochandle, const AppletAttribute *attr);
+static Result _appletGetSessionProxy(Service* srv_out, Handle prochandle, u32 cmd_id);
+
+static Result _appletGetAppletResourceUserId(u64 *out);
+
+static Result _appletGetCurrentFocusState(u8 *out);
+static Result _appletSetFocusHandlingMode(bool inval0, bool inval1, bool inval2);
+static Result _appletSetOutOfFocusSuspendingEnabled(bool inval);
+
+static Result _appletReceiveMessage(u32 *out);
+static Result _appletAcquireForegroundRights(void);
+
+static Result _appletGetOperationMode(u8 *out);
+static Result _appletGetPerformanceMode(u32 *out);
+
+static Result _appletSetOperationModeChangedNotification(bool flag);
+static Result _appletSetPerformanceModeChangedNotification(bool flag);
+
+static Result _appletSelfExit(void);
+
+static Result _appletExitProcessAndReturn(void);
+
+static Result _appletGetAccumulatedSuspendedTickValue(u64 *tick);
+static Result _appletGetAccumulatedSuspendedTickChangedEvent(Event *out_event);
+
+static Result _appletGetLaunchReason(AppletProcessLaunchReason *reason);
+static Result _appletOpenCallingLibraryApplet(AppletHolder *h);
+
+static Result _appletHolderCreateState(AppletHolder *h, LibAppletMode mode, bool creating_self);
+static Result _appletOpenExistingLibraryApplet(AppletHolder *h, Service* srv, u32 cmd_id);
+
+NX_GENERATE_SERVICE_GUARD(applet);
+
+Result _appletInitialize(void) {
+    AppletAttribute *attr = NULL;
+
+    if (g_appletLeftInitialized) {
+        g_appletLeftInitialized = false;
+        return 0;
+    }
+
+    if (__nx_applet_type == AppletType_None)
+        return 0;
+
+    if (__nx_applet_type == AppletType_Default || __nx_applet_type == AppletType_Application) {
+        if (R_FAILED(apmInitialize()))
+            return MAKERESULT(Module_Libnx, LibnxError_ApmFailedToInitialize);
+    }
+
+    Result rc = 0;
+
+    g_appletResourceUserId = 0;
+    g_appletNotifiedRunning = 0;
+    g_appletExitProcessFlag = 0;
+    g_appletRecordingInitialized = 0;
+
+    g_appletInfoInitialized = 0;
+    memset(&g_appletInfo, 0, sizeof(g_appletInfo));
+
+    switch (__nx_applet_type) {
+        case AppletType_Default:
+            __nx_applet_type = AppletType_Application;
+            // Fallthrough.
+        case AppletType_Application:
+            rc = smGetService(&g_appletSrv, "appletOE");
+            break;
+        default:
+            rc = smGetService(&g_appletSrv, "appletAE");
+            break;
+    }
+
+    if (R_SUCCEEDED(rc)) {
+        rc = serviceConvertToDomain(&g_appletSrv);
+    }
+
+    if (R_SUCCEEDED(rc)) {
+        #define AM_BUSY_ERROR 0x19280
+
+        u64 start_tick = 0;
+        u64 timeout = __nx_applet_init_timeout;
+        if (__nx_applet_type == AppletType_LibraryApplet)
+            start_tick = armGetSystemTick();
+
+        do {
+            u32 cmd_id;
+
+            switch(__nx_applet_type) {
+                case AppletType_Application:       cmd_id = 0;   break;
+                case AppletType_SystemApplet:      cmd_id = 100; break;
+                case AppletType_LibraryApplet:     cmd_id = 200; break;
+                case AppletType_OverlayApplet:     cmd_id = 300; break;
+                case AppletType_SystemApplication: cmd_id = 350; break;
+                // TODO: Replace error code
+                default: diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_AppletCmdidNotFound));
+            }
+
+            if (__nx_applet_type == AppletType_LibraryApplet && hosversionAtLeast(3,0,0)) {
+                cmd_id = 201;
+                attr = &__nx_applet_AppletAttribute;
+            }
+
+            if (attr==NULL)
+                rc = _appletGetSessionProxy(&g_appletProxySession, CUR_PROCESS_HANDLE, cmd_id);
+            else
+                rc = _appletOpenLibraryAppletProxy(&g_appletProxySession, CUR_PROCESS_HANDLE, attr);
+
+            if (R_VALUE(rc) == AM_BUSY_ERROR) {
+                svcSleepThread(100000000);
+
+                if (__nx_applet_type == AppletType_LibraryApplet && armTicksToNs(armGetSystemTick() - start_tick) >= timeout)
+                    diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_Timeout));
+
+                // Official sw also has code for calling a funcptr on the first AM_BUSY_ERROR (instead of sleep) where the elapsed time since start_tick is >=1 second, but we don't impl that.
+            }
+
+        } while (R_VALUE(rc) == AM_BUSY_ERROR);
+    }
+
+    // [7.0.0+] GetAppletCommonFunctions
+    if (R_SUCCEEDED(rc) && hosversionAtLeast(7,0,0)) {
+        if (__nx_applet_type == AppletType_SystemApplet || __nx_applet_type == AppletType_LibraryApplet || __nx_applet_type == AppletType_OverlayApplet) {
+            rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIAppletCommonFunctions, __nx_applet_type == AppletType_SystemApplet ? 23 : 21);
+        }
+    }
+
+    // Get*Functions
+    if (R_SUCCEEDED(rc) && __nx_applet_type != AppletType_LibraryApplet)
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIFunctions, 20);
+
+    if (R_SUCCEEDED(rc) && __nx_applet_type == AppletType_SystemApplet) {
+        //GetGlobalStateController
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIGlobalStateController, 21);
+
+        //GetApplicationCreator
+        if (R_SUCCEEDED(rc))
+            rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIApplicationCreator, 22);
+    }
+
+    if (R_SUCCEEDED(rc) && __nx_applet_type == AppletType_LibraryApplet) {
+        //GetLibraryAppletSelfAccessor
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletILibraryAppletSelfAccessor, 20);
+
+        //GetProcessWindingController
+        if (R_SUCCEEDED(rc))
+            rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIProcessWindingController, 10);
+    }
+
+    if (R_SUCCEEDED(rc) && hosversionAtLeast(15,0,0)) { // [15.0.0+]
+        // GetHomeMenuFunctions
+        if (__nx_applet_type == AppletType_LibraryApplet)
+            rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIFunctions, 22);
+
+        // GetGlobalStateController
+        if (R_SUCCEEDED(rc) && (__nx_applet_type == AppletType_LibraryApplet || __nx_applet_type == AppletType_OverlayApplet))
+            rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIGlobalStateController, 23);
+    }
+
+    // GetLibraryAppletCreator
+    if (R_SUCCEEDED(rc))
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletILibraryAppletCreator, 11);
+    // GetCommonStateGetter
+    if (R_SUCCEEDED(rc))
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletICommonStateGetter, 0);
+    // GetSelfController
+    if (R_SUCCEEDED(rc))
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletISelfController, 1);
+    // GetWindowController
+    if (R_SUCCEEDED(rc))
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIWindowController, 2);
+    // Get AppletResourceUserId.
+    if (R_SUCCEEDED(rc))
+        rc = _appletGetAppletResourceUserId(&g_appletResourceUserId);
+    // GetAudioController
+    if (R_SUCCEEDED(rc))
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIAudioController, 3);
+    // GetDisplayController
+    if (R_SUCCEEDED(rc))
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIDisplayController, 4);
+    // GetDebugFunctions
+    if (R_SUCCEEDED(rc))
+        rc = _appletCmdGetSession(&g_appletProxySession, &g_appletIDebugFunctions, 1000);
+
+    Result rc2 = _appletGetAccumulatedSuspendedTickChangedEvent(&g_appletSuspendedTickEvent);
+    if (R_SUCCEEDED(rc2)) {
+        g_appletInitTickBase = armGetSystemTick();
+        g_appletSuspendedTick = 0;
+        g_appletSuspendedTickInitialized = true;
+    }
+
+    // ICommonStateGetter::GetEventHandle
+    if (R_SUCCEEDED(rc))
+        rc = _appletCmdGetEvent(&g_appletICommonStateGetter, &g_appletMessageEvent, false, 0);
+
+    if (R_SUCCEEDED(rc) && (__nx_applet_type == AppletType_Application))
+    {
+        rc = _appletGetCurrentFocusState(&g_appletFocusState);
+
+        //Don't enter this msg-loop when g_appletFocusState is already 1, it will hang when applet was previously initialized in the context of the current process for AppletType_Application.
+        if (R_SUCCEEDED(rc) && g_appletFocusState != AppletFocusState_InFocus) {
+            do {
+                eventWait(&g_appletMessageEvent, UINT64_MAX);
+
+                u32 msg;
+                rc = _appletReceiveMessage(&msg);
+
+                if (R_FAILED(rc))
+                {
+                    if (R_VALUE(rc) == 0x680)
+                        continue;
+
+                    break;
+                }
+
+                if (msg != AppletMessage_FocusStateChanged)
+                    continue;
+
+                rc = _appletGetCurrentFocusState(&g_appletFocusState);
+
+                if (R_FAILED(rc))
+                    break;
+
+            } while(g_appletFocusState != AppletFocusState_InFocus);
+        }
+
+        if (R_SUCCEEDED(rc))
+            rc = _appletAcquireForegroundRights();
+
+        if (R_SUCCEEDED(rc))
+            rc = appletSetFocusHandlingMode(AppletFocusHandlingMode_SuspendHomeSleep);
+    }
+
+    if (R_SUCCEEDED(rc) && __nx_applet_auto_notifyrunning)
+        appletNotifyRunning(NULL);
+
+    if (R_SUCCEEDED(rc))
+        rc = _appletGetOperationMode(&g_appletOperationMode);
+    if (R_SUCCEEDED(rc))
+        rc = _appletGetPerformanceMode(&g_appletPerformanceMode);
+    if (R_SUCCEEDED(rc) && __nx_applet_type!=AppletType_Application)
+        rc = _appletGetCurrentFocusState(&g_appletFocusState);
+
+    if (R_SUCCEEDED(rc))
+        rc = _appletSetOperationModeChangedNotification(1);
+    if (R_SUCCEEDED(rc))
+        rc = _appletSetPerformanceModeChangedNotification(1);
+
+    // Official apps aren't known to use apmSetPerformanceConfiguration with mode=1.
+    if (R_SUCCEEDED(rc) && __nx_applet_type == AppletType_Application) {
+        u32 i;
+        for (i=0; i<2; i++)
+        {
+            if (__nx_applet_PerformanceConfiguration[i])
+                rc = apmSetPerformanceConfiguration(i, __nx_applet_PerformanceConfiguration[i]);
+
+            if (R_FAILED(rc))
+                break;
+        }
+    }
+
+    if (R_SUCCEEDED(rc) && __nx_applet_type == AppletType_LibraryApplet) {
+        AppletProcessLaunchReason launchreason={0};
+
+        Result rc2 = appletGetLibraryAppletInfo(&g_appletInfo.info);
+
+        if (R_SUCCEEDED(rc2)) rc2 = _appletGetLaunchReason(&launchreason);
+
+        if (R_SUCCEEDED(rc2)) {
+            g_appletInfo.caller_flag = launchreason.flag!=0;
+            if (g_appletInfo.caller_flag) rc2 = _appletOpenCallingLibraryApplet(&g_appletInfo.caller);
+        }
+
+        if (R_SUCCEEDED(rc2)) g_appletInfoInitialized = true;
+    }
+
+    return rc;
+}
+
+static void _appletInfiniteSleepLoop(void) {
+    while(1) svcSleepThread(86400000000000ULL);
+}
+
+static void NX_NORETURN _appletExitProcess(int result_code) {
+    appletInitialize();
+    appletExit();
+
+    if (R_SUCCEEDED(g_appletExitProcessResult)) _appletInfiniteSleepLoop();
+
+    svcExitProcess();
+    __builtin_unreachable();
+}
+
+static bool _appletIsApplication(void) {
+    return __nx_applet_type == AppletType_Application || __nx_applet_type == AppletType_SystemApplication;
+}
+
+static bool _appletIsRegularApplication(void) {
+    return __nx_applet_type == AppletType_Application;
+}
+
+void _appletCleanup(void) {
+    if (!g_appletExitProcessFlag) {
+        if (g_appletRecordingInitialized > 0) {
+            if (g_appletRecordingInitialized == 2) appletSetGamePlayRecordingState(0);
+        }
+
+        if (__nx_applet_type == AppletType_Application) appletSetFocusHandlingMode(AppletFocusHandlingMode_NoSuspend);
+
+        if (g_appletCpuBoostMode != ApmCpuBoostMode_Normal) appletSetCpuBoostMode(ApmCpuBoostMode_Normal);
+    }
+
+    if ((envIsNso() && __nx_applet_exit_mode==0) || __nx_applet_exit_mode==1) {
+        if (_appletIsApplication() ||
+            __nx_applet_type == AppletType_LibraryApplet) {
+            if (!g_appletExitProcessFlag) {
+                g_appletExitProcessFlag = 1;
+                g_appletLeftInitialized = true;
+                envSetExitFuncPtr(_appletExitProcess);
+                return;
+            }
+            else {
+                if (_appletIsApplication())
+                    g_appletExitProcessResult = _appletSelfExit();
+                if (__nx_applet_type == AppletType_LibraryApplet)
+                    g_appletExitProcessResult = _appletExitProcessAndReturn();
+            }
+        }
+    }
+
+    if (g_appletInfoInitialized) {
+        if (g_appletInfo.caller_flag) appletHolderClose(&g_appletInfo.caller);
+        g_appletInfoInitialized = 0;
+        memset(&g_appletInfo, 0, sizeof(g_appletInfo));
+    }
+
+    eventClose(&g_appletLibraryAppletLaunchableEvent);
+
+    eventClose(&g_appletMessageEvent);
+
+    if (g_appletSuspendedTickInitialized) {
+        eventClose(&g_appletSuspendedTickEvent);
+        g_appletSuspendedTickInitialized = false;
+    }
+
+    serviceClose(&g_appletIDebugFunctions);
+    serviceClose(&g_appletIDisplayController);
+    serviceClose(&g_appletIAudioController);
+    serviceClose(&g_appletIWindowController);
+    serviceClose(&g_appletISelfController);
+    serviceClose(&g_appletICommonStateGetter);
+    serviceClose(&g_appletILibraryAppletCreator);
+
+    if (__nx_applet_type == AppletType_SystemApplet)
+        serviceClose(&g_appletIApplicationCreator);
+
+    if (__nx_applet_type == AppletType_LibraryApplet) {
+        serviceClose(&g_appletIProcessWindingController);
+        serviceClose(&g_appletILibraryAppletSelfAccessor);
+    }
+
+    if (__nx_applet_type == AppletType_SystemApplet || __nx_applet_type == AppletType_LibraryApplet || __nx_applet_type == AppletType_OverlayApplet)
+        serviceClose(&g_appletIGlobalStateController);
+
+    serviceClose(&g_appletIFunctions);
+
+    serviceClose(&g_appletIAppletCommonFunctions);
+
+    serviceClose(&g_appletProxySession);
+    serviceClose(&g_appletSrv);
+    g_appletResourceUserId = 0;
+
+    if (g_appletRecordingInitialized > 0) {
+        tmemClose(&g_appletRecordingTmem);
+        g_appletRecordingInitialized = 0;
+    }
+
+    if (g_appletCopyrightInitialized) {
+        tmemClose(&g_appletCopyrightTmem);
+        g_appletCopyrightInitialized = 0;
+    }
+
+    if (_appletIsRegularApplication()) apmExit();
+}
+
+Service* appletGetServiceSession_Proxy(void) {
+    return &g_appletProxySession;
+}
+
+Service* appletGetServiceSession_AppletCommonFunctions(void) {
+    return &g_appletIAppletCommonFunctions;
+}
+
+Service* appletGetServiceSession_Functions(void) {
+    return &g_appletIFunctions;
+}
+
+Service* appletGetServiceSession_GlobalStateController(void) {
+    return &g_appletIGlobalStateController;
+}
+
+Service* appletGetServiceSession_ApplicationCreator(void) {
+    return &g_appletIApplicationCreator;
+}
+
+Service* appletGetServiceSession_LibraryAppletSelfAccessor(void) {
+    return &g_appletILibraryAppletSelfAccessor;
+}
+
+Service* appletGetServiceSession_ProcessWindingController(void) {
+    return &g_appletIProcessWindingController;
+}
+
+Service* appletGetServiceSession_LibraryAppletCreator(void) {
+    return &g_appletILibraryAppletCreator;
+}
+
+Service* appletGetServiceSession_CommonStateGetter(void) {
+    return &g_appletICommonStateGetter;
+}
+
+Service* appletGetServiceSession_SelfController(void) {
+    return &g_appletISelfController;
+}
+
+Service* appletGetServiceSession_WindowController(void) {
+    return &g_appletIWindowController;
+}
+
+Service* appletGetServiceSession_AudioController(void) {
+    return &g_appletIAudioController;
+}
+
+Service* appletGetServiceSession_DisplayController(void) {
+    return &g_appletIDisplayController;
+}
+
+Service* appletGetServiceSession_DebugFunctions(void) {
+    return &g_appletIDebugFunctions;
+}
+
+AppletType appletGetAppletType(void) {
+    return __nx_applet_type;
+}
+
+static void appletCallHook(AppletHookType hookType)
+{
+    AppletHookCookie* c;
+    for (c = &g_appletFirstHook; c && c->callback; c = c->next)
+        c->callback(hookType, c->param);
+}
+
+void appletHook(AppletHookCookie* cookie, AppletHookFn callback, void* param)
+{
+    if (callback == NULL)
+        return;
+
+    AppletHookCookie* hook = &g_appletFirstHook;
+    *cookie = *hook; // Structure copy.
+    hook->next = cookie;
+    hook->callback = callback;
+    hook->param = param;
+}
+
+void appletUnhook(AppletHookCookie* cookie)
+{
+    AppletHookCookie* hook;
+    for (hook = &g_appletFirstHook; hook; hook = hook->next)
+    {
+        if (hook->next == cookie)
+        {
+            *hook = *cookie; // Structure copy.
+            break;
+        }
+    }
+}
+
+void appletSetThemeColorType(AppletThemeColorType theme) {
+    g_appletThemeColorType = theme;
+}
+
+AppletThemeColorType appletGetThemeColorType(void) {
+    return g_appletThemeColorType;
+}
+
+Result appletSetFocusHandlingMode(AppletFocusHandlingMode mode) {
+    Result rc;
+    bool invals[4];
+
+    if (__nx_applet_type != AppletType_Application)
+        return MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
+    if (mode >= AppletFocusHandlingMode_Max)
+        return MAKERESULT(Module_Libnx, LibnxError_BadInput);
+
+    memset(invals, 0, sizeof(invals));
+
+    if ((mode == AppletFocusHandlingMode_SuspendHomeSleep) || (mode == AppletFocusHandlingMode_AlwaysSuspend)) {
+        invals[0] = 0;
+        invals[1] = 0;
+        invals[2] = 1;
+    }
+
+    if (mode != AppletFocusHandlingMode_AlwaysSuspend) {
+        invals[3] = 0;
+
+        if (mode == AppletFocusHandlingMode_NoSuspend) {
+            invals[0] = 1;
+            invals[1] = 1;
+            invals[2] = 0;
+        }
+        else if (mode == AppletFocusHandlingMode_SuspendHomeSleepNotify) {
+            invals[0] = 1;
+            invals[1] = 0;
+            invals[2] = 1;
+        }
+    }
+    else {
+        invals[3] = 1;
+    }
+
+    rc = _appletSetFocusHandlingMode(invals[0], invals[1], invals[2]);
+
+    if (R_SUCCEEDED(rc) && hosversionAtLeast(2,0,0))
+        rc = _appletSetOutOfFocusSuspendingEnabled(invals[3]);
+
+    return rc;
+}
+
+// Helper macros for use with the below ipc helper funcs.
+#define IPC_MAKE_CMD_IMPL(proto,_s,_rid,func,...) \
+proto { \
+    if (!serviceIsActive((_s))) \
+        return MAKERESULT(Module_Libnx, LibnxError_NotInitialized); \
+    return func((_s), ##__VA_ARGS__, (_rid)); \
+}
+
+#define IPC_MAKE_CMD_IMPL_HOSVER(proto,_s,_rid,func,_hosver,...) \
+proto { \
+    if (!serviceIsActive((_s))) \
+        return MAKERESULT(Module_Libnx, LibnxError_NotInitialized); \
+    if (hosversionBefore _hosver) \
+        return MAKERESULT(Module_Libnx, LibnxError_IncompatSysVer); \
+    return func((_s), ##__VA_ARGS__, (_rid)); \
+}
+
+#define IPC_MAKE_CMD_IMPL_INITEXPR(proto,_s,_rid,func,initexpr,...) \
+proto { \
+    if (!serviceIsActive((_s)) || (initexpr)) \
+        return MAKERESULT(Module_Libnx, LibnxError_NotInitialized); \
+    return func((_s), ##__VA_ARGS__, (_rid)); \
+}
+
+#define IPC_MAKE_CMD_IMPL_INITEXPR_HOSVER(proto,_s,_rid,func,initexpr,_hosver,...) \
+proto { \
+    if (!serviceIsActive((_s)) || (initexpr)) \
+        return MAKERESULT(Module_Libnx, LibnxError_NotInitialized); \
+    if (hosversionBefore _hosver) \
+        return MAKERESULT(Module_Libnx, LibnxError_IncompatSysVer); \
+    return func((_s), ##__VA_ARGS__, (_rid)); \
+}
+
+static Result _appletCmdGetHandle(Service* srv, Handle* handle_out, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatch(srv, cmd_id,
+        .out_handle_attrs = { SfOutHandleAttr_HipcCopy },
+        .out_handles = handle_out,
+    );
+}
+
+static Result _appletCmdGetEvent(Service* srv, Event* out_event, bool autoclear, u32 cmd_id) {
+    Handle tmp_handle = INVALID_HANDLE;
+    Result rc = 0;
+
+    rc = _appletCmdGetHandle(srv, &tmp_handle, cmd_id);
+    if (R_SUCCEEDED(rc)) eventLoadRemote(out_event, tmp_handle, autoclear);
+    return rc;
+}
+
+static Result _appletCmdGetSession(Service* srv, Service* srv_out, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatch(srv, cmd_id,
+        .out_num_objects = 1,
+        .out_objects = srv_out,
+    );
+}
+
+static Result _appletOpenLibraryAppletProxy(Service* srv_out, Handle prochandle, const AppletAttribute *attr) {
+    u64 reserved=0;
+    serviceAssumeDomain(&g_appletSrv);
+    return serviceDispatchIn(&g_appletSrv, 201, reserved,
+        .buffer_attrs = { SfBufferAttr_HipcMapAlias | SfBufferAttr_In },
+        .buffers = { { attr, sizeof(*attr) } },
+        .in_send_pid = true,
+        .in_num_handles = 1,
+        .in_handles = { prochandle },
+        .out_num_objects = 1,
+        .out_objects = srv_out,
+    );
+}
+
+static Result _appletGetSessionProxy(Service* srv_out, Handle prochandle, u32 cmd_id) {
+    u64 reserved=0;
+    serviceAssumeDomain(&g_appletSrv);
+    return serviceDispatchIn(&g_appletSrv, cmd_id, reserved,
+        .in_send_pid = true,
+        .in_num_handles = 1,
+        .in_handles = { prochandle },
+        .out_num_objects = 1,
+        .out_objects = srv_out,
+    );
+}
+
+static Result _appletCmdGetSessionInU64(Service* srv, Service* srv_out, u64 inval, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchIn(srv, cmd_id, inval,
+        .out_num_objects = 1,
+        .out_objects = srv_out,
+    );
+}
+
+static Result _appletCmdGetSessionInU32(Service* srv, Service* srv_out, u32 inval, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchIn(srv, cmd_id, inval,
+        .out_num_objects = 1,
+        .out_objects = srv_out,
+    );
+}
+
+static Result _appletCmdNoIO(Service* srv, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatch(srv, cmd_id);
+}
+
+static Result _appletCmdNoInOutU64(Service* srv, u64 *out, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchOut(srv, cmd_id, *out);
+}
+
+static Result _appletCmdNoInOutU32(Service* srv, u32 *out, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchOut(srv, cmd_id, *out);
+}
+
+static Result _appletCmdNoInOutU8(Service* srv, u8 *out, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchOut(srv, cmd_id, *out);
+}
+
+static Result _appletCmdNoInOutBool(Service* srv, bool *out, u32 cmd_id) {
+    u8 tmp=0;
+    Result rc = _appletCmdNoInOutU8(srv, &tmp, cmd_id);
+    if (R_SUCCEEDED(rc) && out) *out = tmp & 1;
+    return rc;
+}
+
+static Result _appletCmdInU8NoOut(Service* srv, u8 inval, u64 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchIn(srv, cmd_id, inval);
+}
+
+static Result _appletCmdInU32NoOut(Service* srv, u32 inval, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchIn(srv, cmd_id, inval);
+}
+
+static Result _appletCmdInU64NoOut(Service* srv, u64 inval, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchIn(srv, cmd_id, inval);
+}
+
+static Result _appletCmdInBoolNoOut(Service* srv, bool inval, u32 cmd_id) {
+    return _appletCmdInU8NoOut(srv, inval!=0, cmd_id);
+}
+
+static Result _appletCmdInHandleU64NoOut(Service* srv, Handle handle, u64 inval, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchIn(srv, cmd_id, inval,
+        .in_num_handles = 1,
+        .in_handles = { handle },
+    );
+}
+
+static Result _appletCmdInHandleU64OutSession(Service* srv, Service* srv_out, Handle handle, u64 inval, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchIn(srv, cmd_id, inval,
+        .in_num_handles = 1,
+        .in_handles = { handle },
+        .out_num_objects = 1,
+        .out_objects = srv_out,
+    );
+}
+
+static Result _appletCmdInTmemNoOut(Service* srv, TransferMemory *tmem, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return _appletCmdInHandleU64NoOut(srv, tmem->handle, tmem->size, cmd_id);
+}
+
+static Result _appletCmdInTmemOutSession(Service* srv, Service* srv_out, TransferMemory *tmem, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return _appletCmdInHandleU64OutSession(srv, srv_out, tmem->handle, tmem->size, cmd_id);
+}
+
+static Result _appletCmdInSession(Service* srv, Service* srv_in, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatch(srv, cmd_id,
+        .in_num_objects = 1,
+        .in_objects = { srv_in },
+    );
+}
+
+static Result _appletCmdInStorage(Service* srv, AppletStorage* s, u32 cmd_id) {
+    if (!serviceIsActive(&s->s))
+        return MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
+
+    Result rc =_appletCmdInSession(srv, &s->s, cmd_id);
+    appletStorageClose(s);
+    return rc;
+}
+
+static Result _appletCmdInStorageU32(Service* srv, AppletStorage* s, u32 inval, u32 cmd_id) {
+    if (!serviceIsActive(&s->s))
+        return MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
+
+    serviceAssumeDomain(srv);
+    Result rc = serviceDispatchIn(srv, cmd_id, inval,
+        .in_num_objects = 1,
+        .in_objects = { &s->s },
+    );
+    appletStorageClose(s);
+    return rc;
+}
+
+static Result _appletCmdInStorageU64(Service* srv, AppletStorage* s, u64 inval, u32 cmd_id) {
+    if (!serviceIsActive(&s->s))
+        return MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
+
+    serviceAssumeDomain(srv);
+    Result rc = serviceDispatchIn(srv, cmd_id, inval,
+        .in_num_objects = 1,
+        .in_objects = { &s->s },
+    );
+    appletStorageClose(s);
+    return rc;
+}
+
+static Result _appletCmdInU32OutStorage(Service* srv, AppletStorage* s, u32 inval, u32 cmd_id) {
+    memset(s, 0, sizeof(AppletStorage));
+    serviceAssumeDomain(srv);
+    Result rc = serviceDispatchIn(srv, cmd_id, inval,
+        .out_num_objects = 1,
+        .out_objects = &s->s,
+    );
+    return rc;
+}
+
+static Result _appletCmdNoInOutStorage(Service* srv, AppletStorage* s, u32 cmd_id) {
+    memset(s, 0, sizeof(AppletStorage));
+    return _appletCmdGetSession(srv, &s->s, cmd_id);
+}
+
+static Result _appletCmdSendBufNoOut(Service* srv, const void* buffer, size_t size, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatch(srv, cmd_id,
+        .buffer_attrs = { SfBufferAttr_HipcMapAlias | SfBufferAttr_In },
+        .buffers = { { buffer, size } },
+    );
+}
+
+static Result _appletCmdNoInRecvBuf(Service* srv, void* buffer, size_t size, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatch(srv, cmd_id,
+        .buffer_attrs = { SfBufferAttr_HipcMapAlias | SfBufferAttr_Out },
+        .buffers = { { buffer, size } },
+    );
+}
+
+static Result _appletGetLibraryAppletInfo(Service* srv, LibAppletInfo *info, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchOut(srv, cmd_id, *info);
+}
+
+static Result _appletGetIdentityInfo(Service* srv, AppletIdentityInfo *info, u32 cmd_id) {
+    serviceAssumeDomain(srv);
+    return serviceDispatchOut(srv, cmd_id, *info);
+}
+
+static Result _appletGetResolution(Service* srv, s32 *width, s32 *height, u32 cmd_id) {
+    struct {
+        s32 width;
+        s32 height;
+    } out;
+
+    serviceAssumeDomain(srv);
+    Result rc = serviceDispatchOut(srv, cmd_id, out);
+    if (R_SUCCEEDED(rc) && width) *width = out.width;
+    if (R_SUCCEEDED(rc) && height) *height = out.height;
+    return rc;
+}
+
+// ICommonStateGetter
+
+IPC_MAKE_CMD_IMPL(static Result _appletReceiveMessage(u32 *out),     &g_appletICommonStateGetter, 1, _appletCmdNoInOutU32, out)
+IPC_MAKE_CMD_IMPL(static Result _appletGetOperationMode(u8 *out),    &g_appletICommonStateGetter, 5, _appletCmdNoInOutU8,  out)
+IPC_MAKE_CMD_IMPL(static Result _appletGetPerformanceMode(u32 *out), &g_appletICommonStateGetter, 6, _appletCmdNoInOutU32, out)
+IPC_MAKE_CMD_IMPL(       Result appletGetCradleStatus(u8 *status),   &g_appletICommonStateGetter, 7, _appletCmdNoInOutU8,  status)
+
+Result appletGetBootMode(PmBootMode *mode) {
+    u8 tmp=0;
+    Result rc = _appletCmdNoInOutU8(&g_appletICommonStateGetter, &tmp, 8);
+    if (R_SUCCEEDED(rc) && mode) *mode = tmp;
+    return rc;
+}
+
+IPC_MAKE_CMD_IMPL(static Result _appletGetCurrentFocusState(u8 *out),               &g_appletICommonStateGetter,  9, _appletCmdNoInOutU8, out)
+IPC_MAKE_CMD_IMPL(static Result _appletGetAcquiredSleepLockEvent(Event *out_event), &g_appletICommonStateGetter, 13, _appletCmdGetEvent,  out_event, false)
+
+static Result _appletWaitAcquiredSleepLockEvent(void) {
+    Result rc=0;
+    Event tmpevent={0};
+
+    rc = _appletGetAcquiredSleepLockEvent(&tmpevent);
+    if (R_SUCCEEDED(rc)) rc = eventWait(&tmpevent, UINT64_MAX);
+    eventClose(&tmpevent);
+    return rc;
+}
+
+Result appletRequestToAcquireSleepLock(void) {
+    Result rc = _appletCmdNoIO(&g_appletICommonStateGetter, 10);
+    if (R_SUCCEEDED(rc)) rc = _appletWaitAcquiredSleepLockEvent();
+    return rc;
+}
+
+IPC_MAKE_CMD_IMPL(Result appletReleaseSleepLock(void), &g_appletICommonStateGetter, 11, _appletCmdNoIO)
+
+Result appletReleaseSleepLockTransiently(void) {
+    Result rc = _appletCmdNoIO(&g_appletICommonStateGetter, 12);
+    if (R_SUCCEEDED(rc)) rc = _appletWaitAcquiredSleepLockEvent();
+    return rc;
+}
+
+IPC_MAKE_CMD_IMPL_HOSVER(Result appletGetWakeupCount(u64 *out),        &g_appletICommonStateGetter, 14, _appletCmdNoInOutU64, (11,0,0), out)
+
+IPC_MAKE_CMD_IMPL(Result appletPushToGeneralChannel(AppletStorage *s), &g_appletICommonStateGetter, 20, _appletCmdInStorage, s)
+
+static Result _appletGetHomeButtonRwLockAccessor(Service* srv, AppletLockAccessor *a, u32 cmd_id) {
+    Result rc = _appletCmdGetSession(srv, &a->s, cmd
+
+[… truncated 102143 chars …]
