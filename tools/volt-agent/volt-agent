@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+# ── volt-agent: M1Switch 自动化测试与验收系统 ─────────────
+# CLI 工具：读取 manifest → 编译项目 → 运行测试 → 验证输出 → JSON 报告
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+BUILD_DIR = REPO_ROOT / "build"
+
+EXIT_SUCCESS = 0
+EXIT_BUILD_FAIL = 20
+EXIT_TEST_FAIL = 30
+EXIT_MANIFEST_ERR = 40
+
+
+def log(msg: str):
+    print(f"[volt-agent] {msg}", file=sys.stderr)
+
+
+# ── Manifest ──────────────────────────────────────────────
+def load_manifest(path: Path) -> dict:
+    if not path.exists():
+        log(f"Manifest not found: {path}")
+        sys.exit(EXIT_MANIFEST_ERR)
+    with open(path) as f:
+        manifest = json.load(f)
+    if "tests" not in manifest:
+        log("Manifest has no 'tests' array")
+        sys.exit(EXIT_MANIFEST_ERR)
+    return manifest
+
+
+# ── Build ─────────────────────────────────────────────────
+def build_project(target: str = "all") -> bool:
+    log(f"Building target '{target}'...")
+    t0 = time.time()
+    cmd = ["cmake", "--build", str(BUILD_DIR)]
+    if target and target != "all":
+        cmd += ["--target", target]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    elapsed = time.time() - t0
+    if r.returncode != 0:
+        log(f"Build FAILED ({elapsed:.1f}s)")
+        print(r.stderr)
+        return False
+    log(f"Build OK ({elapsed:.1f}s)")
+    return True
+
+
+# ── Run test binary ───────────────────────────────────────
+def run_test_binary(bin_path: Path, timeout: int) -> dict:
+    if not bin_path.exists():
+        log(f"Binary not found: {bin_path}")
+        return {"passed": False, "error": "binary not found"}
+
+    t0 = time.time()
+    try:
+        r = subprocess.run(
+            [str(bin_path)],
+            capture_output=True, text=True,
+            timeout=timeout,
+        )
+        elapsed = time.time() - t0
+        return {
+            "passed": r.returncode == 0,
+            "exit_code": r.returncode,
+            "stdout": r.stdout,
+            "stderr": r.stderr,
+            "elapsed_sec": round(elapsed, 2),
+        }
+    except subprocess.TimeoutExpired:
+        elapsed = time.time() - t0
+        return {
+            "passed": False,
+            "error": f"timeout ({timeout}s)",
+            "elapsed_sec": round(elapsed, 2),
+        }
+
+
+# ── Validate output ───────────────────────────────────────
+def validate_output(result: dict, checks: list) -> bool:
+    if not checks:
+        return result.get("passed", False)
+    text = (result.get("stdout", "") + "\n" + result.get("stderr", ""))
+    for chk in checks:
+        kind = chk.get("type", "exit_zero")
+        if kind == "exit_zero" and result.get("exit_code") != 0:
+            log(f"  ✗ check failed: exit code {result.get('exit_code')} != 0")
+            return False
+        if kind == "contains" and chk.get("pattern", "") not in text:
+            log(f"  ✗ check failed: stdout missing '{chk['pattern']}'")
+            return False
+        if kind == "not_contains" and chk.get("pattern", "") in text:
+            log(f"  ✗ check failed: stdout contains '{chk['pattern']}'")
+            return False
+        if kind == "regex":
+            import re
+            if not re.search(chk.get("pattern", ""), text):
+                log(f"  ✗ check failed: regex '{chk['pattern']}' no match")
+                return False
+    return True
+
+
+# ── Run manifest ──────────────────────────────────────────
+def run_manifest(manifest: dict, skip_build: bool = False) -> list:
+    results = []
+
+    if not skip_build:
+        if not build_project():
+            log("Build failed, exiting")
+            sys.exit(EXIT_BUILD_FAIL)
+
+    for test in manifest["tests"]:
+        name = test.get("name", "unnamed")
+        bin_rel = test.get("binary", "")
+        bin_path = BUILD_DIR / bin_rel
+        timeout = test.get("timeout", 10)
+        checks = test.get("checks", [])
+
+        log(f"Running test: {name} ({bin_rel})")
+        result = run_test_binary(bin_path, timeout)
+        result["name"] = name
+        result["validated"] = validate_output(result, checks)
+        status = "✅" if result.get("validated") else "❌"
+        log(f"  {status} {result.get('validated', False)} ({result.get('elapsed_sec', 0):.1f}s)")
+        results.append(result)
+
+    return results
+
+
+# ── Report ────────────────────────────────────────────────
+def print_report(results: list):
+    total = len(results)
+    passed = sum(1 for r in results if r.get("validated"))
+    failed = total - passed
+    print(json.dumps({
+        "summary": {"total": total, "passed": passed, "failed": failed},
+        "tests": results,
+    }, indent=2, ensure_ascii=False))
+
+
+# ── CI summary ────────────────────────────────────────────
+def print_ci_summary(results: list):
+    total = len(results)
+    passed = sum(1 for r in results if r.get("validated"))
+    failed = total - passed
+    print(f"\n=== volt-agent Summary ===")
+    print(f"Tests: {total}  |  Passed: {passed}  |  Failed: {failed}")
+    for r in results:
+        mark = "✅" if r.get("validated") else "❌"
+        print(f"  {mark} {r['name']} ({r.get('elapsed_sec', 0):.1f}s)")
+    if failed > 0:
+        print("\nFailed tests:")
+        for r in results:
+            if not r.get("validated"):
+                err = r.get("error") or f"exit={r.get('exit_code')}"
+                print(f"  ❌ {r['name']}: {err}")
+
+
+# ── Watch mode ────────────────────────────────────────────
+def watch_mode(manifest: dict):
+    import time as _time
+    last_mtime = 0
+    src_patterns = ["src/", "tests/", "CMakeLists.txt"]
+
+    log("Watch mode: monitoring source files for changes...")
+    while True:
+        max_mtime = 0
+        for pat in src_patterns:
+            for f in REPO_ROOT.rglob(pat):
+                if f.is_file() and f.suffix in {".cpp", ".mm", ".h", ".S", ".py"}:
+                    m = f.stat().st_mtime
+                    if m > max_mtime:
+                        max_mtime = m
+        if max_mtime > last_mtime:
+            last_mtime = max_mtime
+            log("Source change detected, re-running...")
+            results = run_manifest(manifest)
+            print_ci_summary(results)
+        _time.sleep(1)
+
+
+# ── Main ──────────────────────────────────────────────────
+def main():
+    parser = argparse.ArgumentParser(
+        description="volt-agent: M1Switch automation & test system")
+    parser.add_argument("--manifest", default="tools/volt-agent/manifest.json",
+                        help="Path to manifest JSON")
+    parser.add_argument("--skip-build", action="store_true",
+                        help="Skip build step (use existing binaries)")
+    parser.add_argument("--watch", action="store_true",
+                        help="Watch source files and re-run on change")
+    parser.add_argument("--ci", action="store_true",
+                        help="CI mode: exit with error code on failure")
+    parser.add_argument("--list", action="store_true",
+                        help="List available tests and exit")
+    args = parser.parse_args()
+
+    manifest_path = Path(args.manifest)
+    if not manifest_path.is_absolute():
+        manifest_path = REPO_ROOT / args.manifest
+
+    manifest = load_manifest(manifest_path)
+
+    if args.list:
+        print("Available tests:")
+        for t in manifest.get("tests", []):
+            bin_name = t.get("binary", "?")
+            timeout = t.get("timeout", 10)
+            print(f"  {t.get('name', '?')}  ({bin_name}, timeout={timeout}s)")
+        return
+
+    if args.watch:
+        watch_mode(manifest)
+        return
+
+    if not args.skip_build:
+        if not build_project():
+            log("Build failed, exiting")
+            sys.exit(EXIT_BUILD_FAIL)
+
+    results = run_manifest(manifest, skip_build=True)
+    print_report(results)
+    print_ci_summary(results)
+
+    total = sum(1 for r in results if r.get("validated"))
+    failed = len(results) - total
+    if args.ci and failed > 0:
+        sys.exit(EXIT_TEST_FAIL)
+
+
+if __name__ == "__main__":
+    main()

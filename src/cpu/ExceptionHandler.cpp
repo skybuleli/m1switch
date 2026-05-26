@@ -1,4 +1,5 @@
 #include "cpu/ExceptionHandler.h"
+#include "cpu/Debugger.h"
 #include "kernel/SvcTable.h"
 #include "common/Log.h"
 #include <mach/mach.h>
@@ -29,6 +30,30 @@ void SigHandler::TrapHandler(int sig, siginfo_t* info, void* uap) {
 
     if ((inst & BRK_MASK) == BRK_PATTERN) {
         u32 tag = (inst >> 5) & 0xFFFF;
+
+        // 调试器断点 (BRK 0x6000+)
+        if ((tag & 0xF000) == BRK_TAG_DEBUG) {
+            GuestThreadState gs;
+            for (int i = 0; i < 29; i++) gs.x[i] = ss.__x[i];
+            gs.x[29] = ss.__fp;
+            gs.x[30] = ss.__lr;
+            gs.sp = ss.__sp;
+            gs.pc = pc;
+
+            bool handled = GlobalDebugger().OnBreakpoint(pc, gs);
+
+            if (handled) {
+                for (int i = 0; i < 29; i++) ss.__x[i] = gs.x[i];
+                ss.__fp = gs.x[29];
+                ss.__lr = gs.x[30];
+                ss.__sp = gs.sp;
+                // 不推进 PC — 调试器会在继续时恢复原始指令并单步
+                return;
+            }
+            ss.__pc = pc + 4;
+            return;
+        }
+
         u32 svc = tag - BRK_TAG_BASE;
 
         GuestThreadState gs;

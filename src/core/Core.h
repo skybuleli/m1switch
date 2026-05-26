@@ -5,6 +5,7 @@
 #include "memory/Memory.h"
 #include "core/Scheduler.h"
 #include "cpu/ExceptionHandler.h"
+#include "cpu/Debugger.h"
 #include "gpu/StateTracker.h"
 #include "kernel/Kernel.h"
 #include "loader/NroLoader.h"
@@ -41,6 +42,8 @@ public:
     KHandleTable& GetHandles() { return handles_; }
 
     u8* GetTlsIpcBuffer(u64 tls_base) const;
+
+    EmuDebugger& GetDebugger() { return GlobalDebugger(); }
 
 private:
     void InitKernel();

@@ -83,6 +83,7 @@ file(GLOB_RECURSE CORE_SRCS
     src/cpu/*.cpp src/cpu/*.mm src/cpu/*.S
     src/memory/*.cpp src/memory/*.mm
     src/kernel/*.cpp src/kernel/*.mm
+    src/cpu/Debugger.cpp
 )
 add_library(m1switch_core STATIC ${CORE_SRCS})
 target_include_directories(m1switch_core PUBLIC src)

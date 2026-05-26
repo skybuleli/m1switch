@@ -67,6 +67,10 @@ void EmulatorCore::WireSvcDispatch() {
     };
     sig_handler_.SetSvcDispatch(dispatch);
     SvcHandlers_SetDispatch(dispatch);
+
+    // 调试器初始化
+    auto& dbg = GlobalDebugger();
+    dbg.SetMemory(&memory_);
 }
 
 Result EmulatorCore::LoadGame(const std::string& path) {

@@ -10,6 +10,9 @@ struct __attribute__((aligned(16))) GuestThreadState {
     u64 pc;
 };
 
+// BRK 标签常量（也在 Debugger 中使用）
+constexpr u32 BRK_TAG_DEBUG = 0x6000;
+
 using SvcHandlerFn = std::function<void(u32 svc_num, GuestThreadState* state)>;
 
 class SigHandler {

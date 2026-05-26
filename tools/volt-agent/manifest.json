@@ -1,0 +1,44 @@
+{
+  "name": "M1Switch Validation Suite",
+  "version": "0.1.0",
+  "description": "Automated test manifest for M1Switch emulator",
+  "build": {
+    "target": "all",
+    "cmake_args": ["-B", "build", "-DCMAKE_BUILD_TYPE=Debug"]
+  },
+  "tests": [
+    {
+      "name": "All Unit Tests",
+      "binary": "tests/all_tests",
+      "timeout": 30,
+      "checks": [
+        {"type": "exit_zero"},
+        {"type": "contains", "pattern": "=== 74 passed, 0 failed ==="}
+      ]
+    },
+    {
+      "name": "NRO Loading",
+      "binary": "tests/test_nro_loading",
+      "timeout": 10,
+      "checks": [
+        {"type": "exit_zero"}
+      ]
+    },
+    {
+      "name": "GPU Parser",
+      "binary": "tests/test_gpu_parser",
+      "timeout": 10,
+      "checks": [
+        {"type": "exit_zero"}
+      ]
+    },
+    {
+      "name": "Headless Smoke (test NRO)",
+      "binary": "src/m1switch_headless",
+      "timeout": 10,
+      "checks": [
+        {"type": "exit_zero"}
+      ]
+    }
+  ]
+}

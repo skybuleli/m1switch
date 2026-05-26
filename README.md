@@ -91,6 +91,67 @@ cmake --build build
 - [x] P0 #7: Render-to-framebuffer (render targets from guest memory → Metal RT textures → screen blit)
 - [x] P0 #8: VBO cache (MTLBuffer reuse via guest-address-keyed cache for VBOs, IBOs & UBOs)
 
+**Phase 3** — Services & IPC (Complete)
+- [x] SM service (service manager)
+- [x] VI service (display/vsync)
+- [x] NV service (GPU ioctl)
+- [x] FS service (filesystem)
+- [x] HID service (input)
+- [x] AM service (applet)
+- [x] Account service
+- [x] Set service (settings)
+- [x] AudioOut service
+- [x] Pcv/Spl services
+- [x] IPC forwarding infrastructure
+
+**Phase 4** — Game Loader (Complete)
+- [x] NRO loader (homebrew)
+- [x] NSO loader (retail)
+- [x] NPDM parser
+- [x] NSP/XCI package extraction
+- [x] AES cryptography engine
+- [x] Key manager
+- [x] RomFS extraction
+
+**Phase 5** — Frontend UI (Complete)
+- [x] AppKit application skeleton
+- [x] Game library grid
+- [x] Library sidebar with filtering/search
+- [x] Game window with MTKView
+- [x] Debug panel (GPU stats, memory, shaders)
+- [x] Settings panel
+- [x] Log panel
+- [x] Screenshot support
+
+**Phase 6** — Audio & Input (Complete)
+- [x] CoreAudio audio backend
+- [x] GameController input handling
+- [x] Keyboard/mouse HID support
+
+**Phase 7** — Build System & Testing (Complete)
+- [x] CMake build system (Debug/Release/ASan)
+- [x] SPIRV-Cross integration
+- [x] SPIRV-Tools integration
+- [x] 74 unit tests (all passing)
+- [x] NRO loading tests
+- [x] GPU parser tests
+- [x] Headless runner (CI-capable)
+
+**Phase 8** — Debugger & Automation (New)
+- [x] EmuDebugger: Breakpoint manager (set/clear/list at guest addresses)
+- [x] EmuDebugger: CPU register capture (x0-x30, SP, PC, PState)
+- [x] EmuDebugger: Memory read/write API
+- [x] EmuDebugger: Execution control (pause/continue/step)
+- [x] Debug panel: 5-tab UI (GPU/CPU/Memory/Breakpoints/Log)
+- [x] Debug panel: CPU register viewer (35 registers)
+- [x] Debug panel: Memory hex viewer with address input
+- [x] Debug panel: Breakpoint management UI
+- [x] Debug panel: Execution control buttons
+- [x] volt-agent: CLI automation & test system
+- [x] volt-agent: manifest.json test definitions
+- [x] volt-agent: JSON report output (CI-ready)
+- [x] volt-agent: Watch mode for development
+
 ## License
 
 MIT
