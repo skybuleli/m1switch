@@ -58,22 +58,48 @@ void EmulatorCore::InitKernel() {
 }
 
 void EmulatorCore::InitServices() {
+    // 服务内存设置（在静态初始化后设置，服务构造函数中 g_xxx_memory 为 null）
     extern void ServiceVi_SetMemory(Memory*);
     extern void ServiceHid_SetMemory(Memory*);
-
     ServiceVi_SetMemory(&memory_);
     ServiceHid_SetMemory(&memory_);
 
     // 预先映射 HID 共享内存，供 EmuScreenView::drawInMTKView 每帧写入输入状态
-    // （此时 g_hid_memory 已设置，但 HidService 构造函数在静态初始化时 g_hid_memory 为 null）
     memory_.MapPhysical(0xE1000000, 0x40000, Memory::Permission::RW);
 
     tracker_.SetMemory(&memory_);
     ServiceNv_SetMemory(&memory_);
     ServiceNv_SetTracker(&tracker_);
-    // GPFifo 被 StateTracker 内部持有，NV service 通过 StateTracker 间接访问
 
-    LOG_INFO("Services initialized");
+    // 显式调用 ServiceXxx_Init 确保静态库中的服务对象被链接
+    // （headless_main 也这么做的，否则 linker 可能丢弃整个 translation unit）
+    extern void ServiceSm_Init();
+    extern void ServiceSpl_Init();
+    extern void ServiceAccount_Init();
+    extern void ServiceAm_Init();
+    extern void ServiceFs_Init();
+    extern void ServiceHid_Init();
+    extern void ServiceVi_Init();
+    extern void ServiceSet_Init();
+    extern void ServiceApm_Init();
+    extern void ServiceTime_Init();
+    extern void ServiceAudioOut_Init();
+    extern void ServicePcv_Init();
+
+    ServiceSm_Init();
+    ServiceSpl_Init();
+    ServiceAccount_Init();
+    ServiceAm_Init();
+    ServiceFs_Init();
+    ServiceHid_Init();
+    ServiceVi_Init();
+    ServiceSet_Init();
+    ServiceApm_Init();
+    ServiceTime_Init();
+    ServiceAudioOut_Init();
+    ServicePcv_Init();
+
+    LOG_INFO("Services initialized (%zu services)");
 }
 
 void EmulatorCore::WireSvcDispatch() {
