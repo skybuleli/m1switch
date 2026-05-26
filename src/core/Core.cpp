@@ -123,16 +123,35 @@ Result EmulatorCore::LoadGame(const std::string& path) {
     }
 
     // ── Try NRO loader (homebrew) ─────────────────────
+    // 跳过 Loader_LoadPackage — 它是为 NSP/XCI 设计的，NRO 会重复读文件
     {
-        extern bool Loader_LoadPackage(const std::string& path, Memory& memory);
-        bool loaded_pkg = Loader_LoadPackage(path, memory_);
-        if (loaded_pkg) {
-            LOG_INFO("Loader: RomFS extracted from package");
+        // 检查文件头，只对非 NRO 格式调用 Loader_LoadPackage
+        std::ifstream probe(path, std::ios::binary);
+        if (probe.is_open()) {
+            u32 probe_magic = 0;
+            probe.read(reinterpret_cast<char*>(&probe_magic), 4);
+            if (probe_magic != 0x304F524E) { // not NRO0
+                extern bool Loader_LoadPackage(const std::string& path, Memory& memory);
+                bool loaded_pkg = Loader_LoadPackage(path, memory_);
+                if (loaded_pkg) {
+                    LOG_INFO("Loader: RomFS extracted from package");
+                }
+            }
         }
     }
 
     NroLoader loader(memory_);
-    Result r = loader.LoadFromFile(path, load_info_);
+    Result r = Result::Success;
+    @try {
+        r = loader.LoadFromFile(path, load_info_);
+    } @catch (NSException* e) {
+        LOG_ERROR("NRO load exception: %s reason: %s",
+                  [[e name] UTF8String], [[e reason] UTF8String]);
+        return Result::CpuUnknown;
+    } @catch (...) {
+        LOG_ERROR("NRO load unknown exception");
+        return Result::CpuUnknown;
+    }
     if (Failed(r)) {
         LOG_ERROR("Failed to load game: %d", (int)r);
         return r;
