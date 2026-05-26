@@ -68,9 +68,22 @@ public:
     bool HandleCommand(u32 cmd_id, const u8* in, size_t in_sz,
                        u8* out, size_t* out_sz) override {
         switch (cmd_id) {
-        case 0: // Initialize
-        case 1: // OpenSession
-        case 2: // GetPerformanceMode
+        case 0: // OpenSession — 返回子会话句柄作为 move handle
+            if (*out_sz >= 4) {
+                u32 sub_session = IpcManager::Instance().OpenSessionFor("apm:");
+                LOG_DEBUG("APM: OpenSession → sub_session 0x%x", sub_session);
+                std::memcpy(out, &sub_session, sizeof(sub_session));
+                *out_sz = 4;
+            }
+            return true;
+        case 1: // GetPerformanceMode
+            if (*out_sz >= 4) {
+                u32 mode = 0; // 0 = Normal
+                std::memcpy(out, &mode, sizeof(mode));
+                *out_sz = 4;
+            }
+            return true;
+        case 2: // SetCpuBoostMode
         case 3: // SetCpuBoostMode
             *out_sz = 0; return true;
         default:

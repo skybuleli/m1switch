@@ -99,6 +99,32 @@ u32 IpcManager::CreateSession(ServiceBase* service) {
     return sid;
 }
 
+// 服务 Helper：创建并返回子会话句柄（用于 OpenSession 等服务）
+u32 IpcManager::OpenSessionFor(const char* service_name) {
+    auto it = services_.find(service_name);
+    ServiceBase* svc = (it != services_.end()) ? it->second : nullptr;
+    if (!svc) {
+        LOG_WARN("IPC: OpenSessionFor('%s') - service not registered", service_name);
+        return 0;
+    }
+    return CreateSession(svc);
+}
+
+// ── CMIF 协议常量 ─────────────────────────────────────
+static constexpr u32 CMIF_IN_MAGIC  = 0x49434653; // "SFCI"
+static constexpr u32 CMIF_OUT_MAGIC = 0x4F434653; // "SFCO"
+
+// CMIF InHeader (16 bytes after 16-byte alignment)
+struct CmifInHeader { u32 magic, version, command_id, token; };
+
+// CMIF OutHeader (16 bytes after 16-byte alignment)
+struct CmifOutHeader { u32 magic, version, result, token; };
+
+// 计算 CMIF data 的对齐起始偏移（相对于 data_words 缓冲区的 16 字节对齐）
+static size_t CalcCmifAlign(size_t dw_off) {
+    return (dw_off + 15) & ~15;
+}
+
 u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
                                u8* response, size_t* resp_size) {
     // ── 查找 session ────────────────────────────────────
@@ -115,8 +141,6 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     size_t dw_off = CalcDataWordsOffset(data, size);
 
     // 检测请求是否被上一次响应污染（原地 IPC 缓冲复用）
-    // 特征: has_special_header=1 + num_copy_handles>0（来自上次响应的 SpecialHeader）
-    // 此时重置为干净的、无 data_words 的请求
     if (req_hdr.has_special_header && size >= sizeof(HipcHeader) + 4) {
         HipcSpecialHeader sh;
         std::memcpy(&sh, data + sizeof(HipcHeader), sizeof(sh));
@@ -127,10 +151,33 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         }
     }
 
-    // 从 data_words 中提取命令 ID
+    // ── CMIF 请求解析 ─────────────────────────────────
+    // CmifInHeader 在 data_words 区域内 16 字节对齐
+    size_t cmif_off = CalcCmifAlign(dw_off);
     u32 cmd_id = 0;
-    if (dw_off > 0 && req_hdr.num_data_words > 0) {
-        std::memcpy(&cmd_id, data + dw_off, sizeof(cmd_id));
+    const u8* raw_in = nullptr;
+    size_t raw_in_size = 0;
+
+    if (req_hdr.num_data_words > 0) {
+        // 尝试解析 CmifInHeader
+        CmifInHeader cmif_in = {};
+        std::memcpy(&cmif_in, data + cmif_off, sizeof(cmif_in));
+
+        if (cmif_in.magic == CMIF_IN_MAGIC) {
+            // ✅ CMIF 格式请求
+            cmd_id = cmif_in.command_id;
+            // raw_in 指向 CmifInHeader 之后的数据
+            size_t cmif_end = cmif_off + sizeof(CmifInHeader);
+            size_t dw_end = dw_off + req_hdr.num_data_words * sizeof(u32);
+            if (cmif_end < dw_end) {
+                raw_in = data + cmif_end;
+                raw_in_size = dw_end - cmif_end;
+            }
+        } else if (dw_off > 0) {
+            // ❌ 非 CMIF 格式（旧式/原始 hipc），从第一个 data_word 读取 cmd_id
+            std::memcpy(&cmd_id, data + dw_off, sizeof(cmd_id));
+            raw_in_size = 0;
+        }
     }
 
     // 调试：输出 IPC 请求 full hex（32 bytes）
@@ -145,38 +192,38 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
               data[24],data[25],data[26],data[27],
               data[28],data[29],data[30],data[31]);
 
-    // raw_in = data_words 之后的数据（如果有多个 data_words 或 buffer 数据）
-    const u8* raw_in = data + dw_off + (req_hdr.num_data_words * sizeof(u32));
-    size_t raw_in_size = (raw_in > data && raw_in < data + size) ? (data + size) - raw_in : 0;
-    // 如果只有一个 data_word（命令 ID），则没有额外的 raw_in 数据
-    if (req_hdr.num_data_words <= 1) { raw_in = nullptr; raw_in_size = 0; }
-
     // ── 构建 hipc 响应 ──────────────────────────────────
     HipcHeader resp_hdr = {};
     resp_hdr.type = 0;
 
-    // 预留空间：HipcHeader + 可选的 SpecialHeader(4) + 最多 2 个句柄(8)
+    // 预留空间：HipcHeader + SpecialHeader(4) + 句柄(4-8)
     u8* resp_ptr = response;
     size_t resp_remaining = *resp_size;
 
-    // 跳过 HipcHeader（稍后写入）
     if (resp_remaining < sizeof(HipcHeader)) { *resp_size = 0; return 0; }
     resp_ptr += sizeof(HipcHeader);
     resp_remaining -= sizeof(HipcHeader);
 
-    // Special header + handle 区域（先预留，按需填充）
     u8* shdr_pos = nullptr;
     u8* handle_pos = nullptr;
     u32 num_copy_handles = 0;
     u32 num_move_handles = 0;
 
-    // SM::Initialize 返回会话本身的句柄作为 copy handle
-    // libnx 期望回传的是 SM 服务会话句柄（即当前 session_handle）
-    // 这相当于服务的"引用计数递增"操作
+    // 标记需要从服务输出中提取 move handle 的情形
+    // SM::GetService, APM::OpenSession 等需返回子会话句柄的服务命令
+    bool needs_move_handle = false;
+    if (session && session->service_name == "sm:" && cmd_id == 1) {
+        needs_move_handle = true;
+    } else if (session && session->service_name == "apm:" && cmd_id == 0) {
+        needs_move_handle = true;
+    } else if (session && session->service_name == "apm:sys" && cmd_id == 0) {
+        needs_move_handle = true;
+    }
+
+    // SM::Initialize (cmd=0): 返回会话本身的句柄作为 copy handle
     if (session && session->service_name == "sm:" && cmd_id == 0) {
         if (resp_remaining >= 4 + 4) {
             LOG_DEBUG("SM: Initialize returning session_handle 0x%x", session_handle);
-
             shdr_pos = resp_ptr;
             handle_pos = resp_ptr + 4;
             num_copy_handles = 1;
@@ -186,12 +233,22 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
             resp_remaining -= 4 + 4;
         }
     }
+    // 预分配 move handle 空间: 服务将 session handle 写入 raw_out[0..3] 后，
+    // Ipc 层会将其提取到此处
+    if (needs_move_handle && resp_remaining >= 4 + 4) {
+        shdr_pos = resp_ptr;
+        handle_pos = resp_ptr + 4;
+        num_move_handles = 1;
+        resp_hdr.has_special_header = 1;
+        resp_ptr += 4 + 4;
+        resp_remaining -= 4 + 4;
+    }
 
-    // raw_out 在 HipcHeader + 可选句柄之后
+    // raw_out 指向响应 data_words 起始位置
     u8* raw_out = resp_ptr;
     size_t raw_out_max = resp_remaining;
 
-    *resp_size = (size_t)(raw_out - response); // 基础大小 = header + 可选句柄
+    *resp_size = (size_t)(raw_out - response);
 
     if (!session->service) {
         LOG_TRACE("IPC: session 0x%x ('%s') no handler", session_handle, session->service_name.c_str());
@@ -204,38 +261,51 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // ── 调用服务 ─────────────────────────────────────────
     bool handled = session->service->HandleCommand(cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
 
-    // 所有 CMIF 响应都需要以 CmifOutHeader{magic=SFCO, result=0} 开头
-    // libnx 的 cmifParseResponse 强制检查此 magic
-    u32 cmif_magic = 0x4F434653; // "SFCO" 
-    u32 cmif_result = 0;           // 成功
-    
+    // 后处理：从 raw_out 提取 move handle（服务将句柄写入 raw_out[0..3]）
+    if (handled && handle_pos && raw_out_max >= 4) {
+        u32 move_handle = 0;
+        std::memcpy(&move_handle, raw_out, sizeof(move_handle));
+        if (move_handle >= 0x1000 && move_handle < 0x10000) { // 验证是有效 session 句柄
+            LOG_DEBUG("IPC: move handle 0x%x for '%s' cmd=%u",
+                      move_handle, session->service_name.c_str(), cmd_id);
+            std::memcpy(handle_pos, &move_handle, sizeof(move_handle));
+            raw_out_max = 0; // handle 已提取到头部，清除数据
+        }
+    }
+
     if (handled) {
-        size_t header_size = (size_t)(raw_out - response);
+        // ── 构建 CMIF 响应 ──────────────────────────────
+        // 在 raw_out 的基础上做 16 字节对齐，插入 CmifOutHeader
+        size_t raw_off = (size_t)(raw_out - response);  // data_words 在 response 中的偏移
+        size_t cmif_out_off = CalcCmifAlign(raw_off);   // 16 字节对齐后的偏移
         
-        if (raw_out_max > 0) {
-            // 服务返回了实际数据 → 需要 CMIF 封装：
-            // 在 data_words 开头插入 CmifOutHeader{magic=SFCO, result=0}
-            // 将服务输出向后移 8 字节腾出空间
-            memmove(raw_out + 8, raw_out, raw_out_max);
-            std::memcpy(raw_out, &cmif_magic, 4);
-            std::memcpy(raw_out + 4, &cmif_result, 4);
-            
-            u32 total_out_size = 8 + raw_out_max;
-            resp_hdr.num_data_words = (total_out_size + 3) / 4;
-        } else if (num_copy_handles > 0 || num_move_handles > 0) {
-            // 服务返回了句柄但没有数据 → 不插入 CMIF 头
-            // libnx 的 SM::Initialize 使用原始 hipc（非 CMIF），仅通过句柄传递
-            resp_hdr.num_data_words = 0;
-        } else {
-            // 既没有句柄也没有数据 → 无 data words
-            resp_hdr.num_data_words = 0;
+        // 如果对齐产生间隙，需要填充零
+        // 将服务输出数据移到 CmifOutHeader 之后
+        // cmif_out_off 处放 CmifOutHeader (16 bytes)
+        // cmif_out_off + 16 处放 service 数据
+        
+        size_t cmif_out_end = cmif_out_off + sizeof(CmifOutHeader); // SFCO+version+result+token
+        size_t total_data_end = cmif_out_end + raw_out_max;
+        
+        // 如果 service 有输出数据，将其后移到 CmifOutHeader 之后
+        if (raw_out_max > 0 && cmif_out_end > raw_off) {
+            memmove(response + cmif_out_end, response + raw_off, raw_out_max);
         }
         
-        // 计算实际 data 部分大小（CMIF 头 + 服务数据）
-        u32 cmif_data_words = resp_hdr.num_data_words;
-        size_t total_out_size = cmif_data_words * 4;
-        size_t total_size = header_size + total_out_size;
+        // 写入 CmifOutHeader
+        CmifOutHeader cmif_out = {};
+        cmif_out.magic  = CMIF_OUT_MAGIC;
+        cmif_out.result = 0; // 成功
+        std::memcpy(response + cmif_out_off, &cmif_out, sizeof(cmif_out));
         
+        // 计算总 data_words 大小（从数据偏移到结尾，对齐到 4 字节）
+        size_t total_data_size = total_data_end - raw_off;
+        resp_hdr.num_data_words = (u32)((total_data_size + 3) / 4);
+        
+        size_t header_size = raw_off; // HipcHeader + 特殊头 + 句柄
+        size_t total_size = header_size + total_data_size;
+        
+        // 写入 SpecialHeader
         if (shdr_pos) {
             HipcSpecialHeader shdr = {};
             shdr.num_copy_handles = num_copy_handles;
@@ -246,7 +316,6 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         *resp_size = total_size;
     } else {
         LOG_WARN("IPC: unhandled cmd %u for '%s'", cmd_id, session->service_name.c_str());
-        // 返回错误——libnx 检查 SVC result (x0)，不是 hipc 头
     }
 
     // 写入 HipcHeader
@@ -260,8 +329,6 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
               response[8],response[9],response[10],response[11],
               response[12],response[13],response[14],response[15]);
 
-    // ── IPC 追踪：响应 ────────────────────────────────────
     TRACE_IPC(cmd_id | 0x8000, (u64)session_handle, (u64)handled, 0);
-
-    return 0;  // 成功（SVC result = x0）
+    return 0;
 }

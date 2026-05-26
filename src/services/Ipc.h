@@ -57,6 +57,9 @@ public:
     // Create an anonymous session to a service instance (for sub-objects)
     u32  CreateSession(ServiceBase* service);
 
+    // Open a sub-session for a registered service (apm:OpenSession etc.)
+    u32  OpenSessionFor(const char* service_name);
+
     u32  HandleRequest(u32 session, const u8* data, size_t size,
                        u8* response, size_t* resp_size);
 

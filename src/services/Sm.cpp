@@ -31,7 +31,7 @@ public:
             *out_sz = 0;
             return true;
 
-        case 2: // GetService
+        case 1: // GetService (libnx CMIF: cmd_id=1, 输入 SmServiceName=8字节, 输出 move handle)
             return HandleGetService(in, in_sz, out, out_sz);
 
         case 3: // RegisterService
