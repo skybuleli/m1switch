@@ -22,7 +22,7 @@ void EmuCore_SetTlsBase(u64 base) { g_tls_base = base; }
 static SvcHandlerFn g_svc_dispatch_fn;
 void SvcHandlers_SetDispatch(SvcHandlerFn fn) { g_svc_dispatch_fn = std::move(fn); }
 
-static constexpr u64 TLS_IPC_OFFSET = 0x100;
+static constexpr u64 TLS_IPC_OFFSET = 0x000;
 static constexpr u64 TLS_IPC_SIZE   = 0x100;
 
 static thread_local u64 g_current_tls = 0;

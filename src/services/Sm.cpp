@@ -26,7 +26,8 @@ public:
         switch (cmd_id) {
         case 0: // Initialize
             LOG_DEBUG("SM: Initialize");
-            // No data words — libnx only needs the copy handle
+            // SM::Initialize 通过 CMIF 格式返回结果（Ipc 层自动插入 SFCO 头）
+            // 服务本身不需要返回 data words，仅通过 copy handle 传递会话句柄
             *out_sz = 0;
             return true;
 

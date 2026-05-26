@@ -114,6 +114,19 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     std::memcpy(&req_hdr, data, sizeof(req_hdr));
     size_t dw_off = CalcDataWordsOffset(data, size);
 
+    // 检测请求是否被上一次响应污染（原地 IPC 缓冲复用）
+    // 特征: has_special_header=1 + num_copy_handles>0（来自上次响应的 SpecialHeader）
+    // 此时重置为干净的、无 data_words 的请求
+    if (req_hdr.has_special_header && size >= sizeof(HipcHeader) + 4) {
+        HipcSpecialHeader sh;
+        std::memcpy(&sh, data + sizeof(HipcHeader), sizeof(sh));
+        if (sh.num_copy_handles > 0 || sh.num_move_handles > 0) {
+            LOG_DEBUG("IPC: detected recycled response buffer, resetting request");
+            req_hdr = {};
+            dw_off = sizeof(HipcHeader);
+        }
+    }
+
     // 从 data_words 中提取命令 ID
     u32 cmd_id = 0;
     if (dw_off > 0 && req_hdr.num_data_words > 0) {
@@ -157,21 +170,17 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     u32 num_copy_handles = 0;
     u32 num_move_handles = 0;
 
-    // SM::Initialize 需要返回输出句柄（libnx 的 SfOutHandleAttr_HipcCopy）
-    // 使用内核句柄表创建一个通用对象并返回其句柄
+    // SM::Initialize 返回会话本身的句柄作为 copy handle
+    // libnx 期望回传的是 SM 服务会话句柄（即当前 session_handle）
+    // 这相当于服务的"引用计数递增"操作
     if (session && session->service_name == "sm:" && cmd_id == 0) {
         if (resp_remaining >= 4 + 4) {
-            // libnx 期望 SM 初始化返回服务进程句柄
-            // 使用 KSession 更接近真实 SM（vs KEvent）
-            KSession* sess = new KSession();
-            sess->client_handle = session_handle;  // 关联此会话
-            u32 kernel_handle = KernelHandleTable().Create(sess);
-            LOG_DEBUG("SM: created KSession handle 0x%x for Initialize", kernel_handle);
+            LOG_DEBUG("SM: Initialize returning session_handle 0x%x", session_handle);
 
             shdr_pos = resp_ptr;
             handle_pos = resp_ptr + 4;
             num_copy_handles = 1;
-            std::memcpy(handle_pos, &kernel_handle, sizeof(kernel_handle));
+            std::memcpy(handle_pos, &session_handle, sizeof(session_handle));
             resp_hdr.has_special_header = 1;
             resp_ptr += 4 + 4;
             resp_remaining -= 4 + 4;
@@ -213,13 +222,18 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
             
             u32 total_out_size = 8 + raw_out_max;
             resp_hdr.num_data_words = (total_out_size + 3) / 4;
+        } else if (num_copy_handles > 0 || num_move_handles > 0) {
+            // 服务返回了句柄但没有数据 → 不插入 CMIF 头
+            // libnx 的 SM::Initialize 使用原始 hipc（非 CMIF），仅通过句柄传递
+            resp_hdr.num_data_words = 0;
         } else {
-            // 只有句柄没有数据（如 SM::Initialize）→ 不插入 CMIF 头
-            // libnx 使用原地 IPC 缓冲，额外写入会污染下次请求
+            // 既没有句柄也没有数据 → 无 data words
             resp_hdr.num_data_words = 0;
         }
         
-        size_t total_out_size = raw_out_max > 0 ? (8 + raw_out_max) : 0;
+        // 计算实际 data 部分大小（CMIF 头 + 服务数据）
+        u32 cmif_data_words = resp_hdr.num_data_words;
+        size_t total_out_size = cmif_data_words * 4;
         size_t total_size = header_size + total_out_size;
         
         if (shdr_pos) {

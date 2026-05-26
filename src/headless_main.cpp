@@ -116,34 +116,35 @@ int main(int argc, char** argv) {
     LOG_INFO("Entry: 0x%llx, %zu seg(s)", info.entry_point, info.segments.size());
 
     // ── 验证内存内容 ─────────────────────────────
+    // 使用 NRO 加载信息中的段地址（避免硬编码 Pong-NX 专用地址）
     {
-        // "sm:" 在文件偏移 0x6d16d8, 对应 guest 地址 0x406d16d8
-        u64 sm_addr = 0x406d16d8;
-        u8* ptr = memory.Pointer(sm_addr);
         u8 buf[16] = {};
-        if (ptr) {
-            std::memcpy(buf, ptr, 16);
-            LOG_INFO("MEM_VERIFY: sm: addr=0x%llx data=%02x%02x%02x%02x%02x%02x%02x%02x...",
-                     sm_addr, buf[0],buf[1],buf[2],buf[3],buf[4],buf[5],buf[6],buf[7]);
-        }
-        // 也验证 .text 第一条指令
+        // 验证 .text 第一条指令
         u8* text_ptr = memory.Pointer(0x40000000);
         if (text_ptr) {
             std::memcpy(buf, text_ptr, 4);
             u32 first_inst = buf[0] | (buf[1]<<8) | (buf[2]<<16) | (buf[3]<<24);
-            LOG_INFO("MEM_VERIFY: .text[0] = 0x%08x (expected 0x14000020)", first_inst);
+            LOG_INFO("MEM_VERIFY: .text[0] = 0x%08x", first_inst);
         }
-        // 验证 .text 最后一个可访问字节
-        u8* text_end = memory.Pointer(0x40614fff);
-        if (text_end) {
-            std::memcpy(buf, text_end, 1);
-            LOG_INFO("MEM_VERIFY: .text[0x614fff] = 0x%02x", buf[0]);
+        // 验证 .text 结尾
+        if (!info.segments.empty()) {
+            auto& seg = info.segments[0];
+            u64 text_end_addr = seg.guest_address + seg.size - 1;
+            u8* text_end = memory.Pointer(text_end_addr);
+            if (text_end) {
+                std::memcpy(buf, text_end, 1);
+                LOG_INFO("MEM_VERIFY: .text end[0x%llx] = 0x%02x", text_end_addr, buf[0]);
+            }
         }
-        // 验证 .rodata 开头
-        u8* rodata_start = memory.Pointer(0x40615000);
-        if (rodata_start) {
-            std::memcpy(buf, rodata_start, 16);
-            LOG_INFO("MEM_VERIFY: .rodata[0] = %02x%02x%02x%02x...", buf[0],buf[1],buf[2],buf[3]);
+        // 验证 .rodata 开头（如果有）
+        if (info.segments.size() > 1) {
+            auto& seg = info.segments[1];
+            u8* rodata_ptr = memory.Pointer(seg.guest_address);
+            if (rodata_ptr) {
+                std::memcpy(buf, rodata_ptr, std::min<size_t>(16, seg.size));
+                LOG_INFO("MEM_VERIFY: .rodata[0x%llx] = %02x%02x%02x%02x...",
+                         seg.guest_address, buf[0],buf[1],buf[2],buf[3]);
+            }
         }
     }
 

@@ -70,7 +70,7 @@ private:
     };
     std::unordered_map<std::string, ServiceBase*> services_;
     std::vector<Session> sessions_;
-    u32 next_session_ = 0xCAFE0001;
+    u32 next_session_ = 0x1000;
     std::mutex mutex_;
 };
 
