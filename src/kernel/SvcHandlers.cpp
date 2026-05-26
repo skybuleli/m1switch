@@ -804,7 +804,25 @@ SVC(SvcSetKernelMemoryPermission) { LOG_TRACE("SetKernelMemoryPermission"); Ret(
 SVC(SvcSetUserResourceLimit) { LOG_TRACE("SetUserResourceLimit"); Ret(state, 0); }
 SVC(SvcUnknown3C)            { LOG_TRACE("Unknown3C"); Ret(state, 0); }
 
-SVC(SvcMapSharedMemory)   { LOG_TRACE("MapSharedMemory");   Ret(state, 0); }
+SVC(SvcMapSharedMemory)   {
+    u32 handle = (u32)Arg(state, 0);
+    u64 map_addr = Arg(state, 1);
+    LOG_INFO("MapSharedMemory(handle=0x%x, addr=0x%llx, perm=0x%llx)",
+              handle, map_addr, Arg(state, 2));
+    // HID 共享内存: 当 libnx 映射共享内存句柄时，
+    // 将我们的 HID 缓冲映射到客体的指定地址
+    static constexpr u64 HID_SHARED_MEM = 0xE1000000;
+    static constexpr u64 HID_SHARED_SIZE = 0x40000;
+    if (g_mem && map_addr >= HID_SHARED_MEM && map_addr < HID_SHARED_MEM + HID_SHARED_SIZE) {
+        // HID 缓冲已由 HidService 构造器映射，无需重复映射
+        LOG_INFO("MapSharedMemory: HID buffer already mapped at 0x%llx", HID_SHARED_MEM);
+    } else if (g_mem && map_addr >= 0x10000000 && map_addr < 0xF0000000) {
+        // 通用共享内存映射: 将物理内存映射到指定地址
+        g_mem->MapPhysical(map_addr, 0x40000, Memory::Permission::RW);
+        LOG_INFO("MapSharedMemory: remapped 0x%llx as RW", map_addr);
+    }
+    Ret(state, 0);
+}
 SVC(SvcUnmapSharedMemory) { LOG_TRACE("UnmapSharedMemory"); Ret(state, 0); }
 
 SVC(SvcCreateSession) {

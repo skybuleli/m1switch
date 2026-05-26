@@ -313,6 +313,10 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         needs_move_handle = true;
     } else if ((sname == "appletOE" || sname == "appletAE") && cmd_id == 0) {
         needs_move_handle = true;
+    } else if ((sname == "hid" || sname == "hid:") && cmd_id == 1) {
+        // HID::GetSharedMemory (cmd 1): libnx 期望返回共享内存的 copy handle
+        // 将 HID_SHARED_MEM 地址作为 copy handle 返回
+        needs_move_handle = true;
     } else if (cmd_id <= 1000 && session && session->service &&
                strcmp(session->service->Name(), "appletProxy") == 0) {
         // applet 代理会话的所有子对象命令都返回 move handle
@@ -332,6 +336,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
             resp_remaining -= 4 + 4;
         }
     }
+
     // 预分配 move handle 空间: 服务将 session handle 写入 raw_out[0..3] 后，
     // Ipc 层会将其提取到此处
     if (needs_move_handle && resp_remaining >= 4 + 4) {
@@ -356,6 +361,16 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
 
     // ── IPC 追踪：请求 ────────────────────────────────────
     TRACE_IPC(cmd_id, (u64)session_handle, raw_in_size > 0 ? *((const u64*)raw_in) : 0, 0);
+
+    // HID 诊断: 打印所有 HID 请求的完整 64 字节 hex
+    if (sname.find("hid") != std::string::npos) {
+        char hex[128] = {};
+        int n = 0;
+        for (size_t i = 0; i < std::min(size, (size_t)32); i++)
+            n += snprintf(hex + n, sizeof(hex) - n, "%02x", data[i]);
+        LOG_INFO("HID_DIAG: session=0x%x cmd=%u type=%u hex=%s sz=%zu",
+                  session_handle, cmd_id, (unsigned)req_hdr.type, hex, size);
+    }
 
     // ── 处理 Control 命令（type=5）────────────────────
     // Control 命令由 IPC 层直接处理，不转发给服务

@@ -1,0 +1,201 @@
+[job 66 · exited 3 · byteLength=39202]
+$ ./build/src/m1switch_headless hello_colours.nro --timeout=10
+05:51:59.893 [INFO ] [0x1c03] Sm.cpp:72:HandleGetService SM: GetService('set:sys') → session 0x1001
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=0 cmd=1 for session 0x1000 service=sm:
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:413:HandleRequest IPC: move handle 0x1001 for 'sm:' cmd=1
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=1 session=0x1000 sz=32 hex=00000000 04000080 20000000 01100000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1001)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1001 cmd=3 hex=05000000 08000000 20000000 01100000 53464349 00000000 03000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=1 cmd=3 for session 0x1001 service=set:sys
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=3 session=0x1001 sz=26 hex=00000000 05000000 5346434f 00000000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1001)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1001 cmd=3 hex=04000000 080c0000 5346434f 00000000 53464349 00000000 03000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=0 cmd=3 for session 0x1001 service=set:sys
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:440:HandleRequest IPC: wrote 248 bytes to recv_list buffer guest=0x3bffffef0
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=3 session=0x1001 sz=32 hex=00000000 06000000 00000000 00000000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1001)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1001 cmd=0 hex=02000000 00000000 00000000 00000000 5346434f 00000000 00000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=0 cmd=0 for session 0x1001 service=set:sys
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=0 session=0x1001 sz=32 hex=00000000 06000000 00000000 00000000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x3404525f8 is_brk=1 tag=0x1016
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x16 caught at PC=0x3404525f8 (tag=0x1016)
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1000)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1000 cmd=1 hex=04000000 0a000000 00000000 00000000 53464349 00000000 01000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:152:Connect IPC: Connect('apm') → session 0x1002 (svc=0x1029e57b0)
+05:51:59.893 [INFO ] [0x1c03] Sm.cpp:72:HandleGetService SM: GetService('apm') → session 0x1002
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=0 cmd=1 for session 0x1000 service=sm:
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:413:HandleRequest IPC: move handle 0x1002 for 'sm:' cmd=1
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=1 session=0x1000 sz=32 hex=00000000 04000080 20000000 02100000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1002)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1002 cmd=3 hex=05000000 08000000 20000000 02100000 53464349 00000000 03000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=1 cmd=3 for session 0x1002 service=apm
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=3 session=0x1002 sz=26 hex=00000000 05000000 5346434f 00000000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1002)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1002 cmd=0 hex=04000000 08000000 5346434f 00000000 53464349 00000000 00000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:164:CreateSession IPC: CreateSession → session 0x1003 (anonymous, svc=0x1029e5848)
+05:51:59.893 [DEBUG] [0x1c03] Set.cpp:109:HandleMainSession APM: OpenSession → sub_session 0x1003
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=0 cmd=0 for session 0x1002 service=apm
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:413:HandleRequest IPC: move handle 0x1003 for 'apm' cmd=0
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=0 session=0x1002 sz=32 hex=00000000 04000080 20000000 03100000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1000)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1000 cmd=1 hex=04000000 0a000000 20000000 03100000 53464349 00000000 01000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:152:Connect IPC: Connect('appletOE����') → session 0x1004 (svc=0x0)
+05:51:59.893 [INFO ] [0x1c03] Sm.cpp:72:HandleGetService SM: GetService('appletOE����') → session 0x1004
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=0 cmd=1 for session 0x1000 service=sm:
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:413:HandleRequest IPC: move handle 0x1004 for 'sm:' cmd=1
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=1 session=0x1000 sz=32 hex=00000000 04000080 20000000 04100000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1004)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1004 cmd=3 hex=05000000 08000000 20000000 04100000 53464349 00000000 03000000 00000000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1004)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1004 cmd=0 hex=05000000 08000000 20000000 04100000 53464349 00000000 00000000 00000000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x0)
+05:51:59.893 [WARN ] [0x1c03] Ipc.cpp:201:HandleRequest IPC: invalid session 0x0
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1000)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1000 cmd=1 hex=04000000 0a000000 00000000 00000000 53464349 00000000 01000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:152:Connect IPC: Connect('hid') → session 0x1005 (svc=0x1029e55b8)
+05:51:59.893 [INFO ] [0x1c03] Sm.cpp:72:HandleGetService SM: GetService('hid') → session 0x1005
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=0 cmd=1 for session 0x1000 service=sm:
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:413:HandleRequest IPC: move handle 0x1005 for 'sm:' cmd=1
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=1 session=0x1000 sz=32 hex=00000000 04000080 20000000 05100000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1005)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1005 cmd=3 hex=05000000 08000000 20000000 05100000 53464349 00000000 03000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=1 cmd=3 for session 0x1005 service=hid
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=3 session=0x1005 sz=26 hex=00000000 05000000 5346434f 00000000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1005)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1005 cmd=0 hex=04000000 0a000080 01000000 00000000 00000000 00000000 00000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Hid.cpp:137:HandleInitialize HID: Initialize
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=0 cmd=0 for session 0x1005 service=hid
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=0 session=0x1005 sz=32 hex=00000000 06000000 00000000 00000000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x0)
+05:51:59.893 [WARN ] [0x1c03] Ipc.cpp:201:HandleRequest IPC: invalid session 0x0
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452650 is_brk=1 tag=0x1021
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x21 caught at PC=0x340452650 (tag=0x1021)
+05:51:59.893 [DEBUG] [0x1c03] SvcHandlers.cpp:503:SvcSendSyncRequest SendSyncRequest(session=0x1005)
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:283:HandleRequest IPC REQ session=0x1005 cmd=0 hex=02000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+05:51:59.893 [DEBUG] [0x1c03] Hid.cpp:137:HandleInitialize HID: Initialize
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:405:HandleRequest IPC: handled=1 is_control=0 cmd=0 for session 0x1005 service=hid
+05:51:59.893 [DEBUG] [0x1c03] Ipc.cpp:500:HandleRequest IPC RESP cmd=0 session=0x1005 sz=32 hex=00000000 06000000 00000000 00000000
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x3404525f8 is_brk=1 tag=0x1016
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x16 caught at PC=0x3404525f8 (tag=0x1016)
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:69:TrapHandler TrapHandler: PC=0x340452658 is_brk=1 tag=0x1026
+05:51:59.893 [INFO ] [0x1c03] ExceptionHandler.cpp:99:TrapHandler SVC #0x26 caught at PC=0x340452658 (tag=0x1026)
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:601:SvcBreak Break(reason=0x0, address=0x3bffffedc, size=0x4)
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:606:SvcBreak Break regs: x0=0 x1=3bffffedc x2=4 x3=0 x4=0 x5=8000000a00000004
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:609:SvcBreak Break regs: x6=3406a3408 x7=130001 x8=d00000004 x16=0 x29=3bffffec0 x30=34045202c
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:622:SvcBreak Break payload u32=0x00004159
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:631:SvcBreak === BREAK DIAGNOSTIC DUMP ===
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:636:SvcBreak   x00=0000000000000000  x01=00000003bffffedc  x02=0000000000000004  x03=0000000000000000
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:636:SvcBreak   x04=0000000000000000  x05=8000000a00000004  x06=00000003406a3408  x07=0000000000130001
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:636:SvcBreak   x08=0000000d00000004  x09=00000003406a3000  x10=0000000000000000  x11=0000000000000000
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:636:SvcBreak   x12=0000000000000000  x13=0000000000000000  x14=0000000000000000  x15=0000000000000000
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:636:SvcBreak   x16=0000000000000000  x17=0000000000000000  x18=0000000000000000  x19=0000000000000000
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:636:SvcBreak   x20=0000000000000000  x21=0000000000000000  x22=0000000000000000  x23=0000000000000000
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:636:SvcBreak   x24=0000000000000000  x25=0000000000000000  x26=000000000000d001  x27=0000000340000000
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:636:SvcBreak   x28=0000000340000118  x29=00000003bffffec0  x30=000000034045202c  x31=00000003bffffec0
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:638:SvcBreak   sp=00000003bffffec0  pc=0000000340452658
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:643:SvcBreak === STACK AROUND PAYLOAD (address=0x3bffffedc) ===
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [ 0x3bffffeb4] = 0x4045657800000003
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [ 0x3bffffebc] = 0xbffffee000000003
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [ 0x3bffffec4] = 0x4045662c00000003
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [ 0x3bffffecc] = 0x0000000000000003
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [ 0x3bffffed4] = 0x0000000000000000
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [>0x3bffffedc] = 0xbffffff000004159
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [ 0x3bffffee4] = 0x404566a400000003
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [ 0x3bffffeec] = 0x0000000000000003
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [ 0x3bffffef4] = 0x0000000000000000
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:650:SvcBreak   [ 0x3bffffefc] = 0x0000000000000000
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:657:SvcBreak === INIT CHECK POINTER SCAN ===
+05:51:59.893 [ERROR] [0x1c03] SvcHandlers.cpp:672:SvcBreak === END DIAGNOSTIC ===
+05:51:59.893 [INFO ] [0x1c03] NativeExec.cpp:119:RunGuest Guest exited via SVC longjmp
+05:51:59.893 [INFO ] [0x1c03] headless_main.cpp:330:operator() Guest thread returned from RunGuest (normal exit)
+05:51:59.905 [ERROR] [0x103] headless_main.cpp:351:main GUEST CRASHED
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:368:main === Trace Stats ===
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:369:main Total events: 98
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:370:main Dropped events: 0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:373:main   SVC: 70 events
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:373:main   IPC: 28 events
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:373:main   GPU_CMD: 0 events
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:373:main   MEM: 0 events
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:373:main   CPU_EXEC: 0 events
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:373:main   THREAD: 0 events
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:379:main === Recent SVC calls ===
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x16 CALL: x0=0x1001 x1=0x200000000
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x16 RETURN: x0_before=0x1001 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1000 x1=0x6d7061
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1000 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1002 x1=0x3
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1002 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1002 x1=0x49434653
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1002 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1000 x1=0x454f74656c707061
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1000 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1004 x1=0x3
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1004 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1004 x1=0x49434653
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1004 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x0 x1=0x1
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x0 result=0xffff
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1000 x1=0x646968
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1000 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1005 x1=0x3
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1005 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1005 x1=0x3406a3000
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1005 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x0 x1=0x49434653
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x0 result=0xffff
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x21 CALL: x0=0x1005 x1=0x200000000
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x21 RETURN: x0_before=0x1005 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x16 CALL: x0=0x1005 x1=0x200000000
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x16 RETURN: x0_before=0x1005 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:388:main   SVC #0x26 CALL: x0=0x0 x1=0x3bffffedc
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:385:main   SVC #0x26 RETURN: x0_before=0x0 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:395:main === Recent IPC calls ===
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=3 REQ: session=0x1001 arg=0x7379733a746573
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=3 RESP: session=0x1001 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=0 REQ: session=0x1001 arg=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=0 RESP: session=0x1001 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=1 REQ: session=0x1000 arg=0x6d7061
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=1 RESP: session=0x1000 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=3 REQ: session=0x1002 arg=0x6d7061
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=3 RESP: session=0x1002 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=0 REQ: session=0x1002 arg=0x6d7061
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=0 RESP: session=0x1002 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=1 REQ: session=0x1000 arg=0x454f74656c707061
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=1 RESP: session=0x1000 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=1 REQ: session=0x1000 arg=0x646968
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=1 RESP: session=0x1000 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=3 REQ: session=0x1005 arg=0x646968
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=3 RESP: session=0x1005 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=0 REQ: session=0x1005 arg=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=0 RESP: session=0x1005 result=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:404:main   IPC cmd=0 REQ: session=0x1005 arg=0x0
+05:51:59.905 [INFO ] [0x103] headless_main.cpp:401:main   IPC cmd=0 RESP: session=0x1005 result=0x0
+05:51:59.905 [INFO ] [0x103] DebugServer.cpp:195:Stop DebugServer: 已停止

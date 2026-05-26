@@ -48,9 +48,14 @@ private:
         // Input: service name string
         // Output: session handle
         if (in_sz < 1) return false;
-        std::string name(reinterpret_cast<const char*>(in), in_sz);
-        // Null-terminate at first null
-        name = name.c_str();
+        // Clean service name: find first null byte and truncate
+        size_t name_len = 0;
+        while (name_len < in_sz && in[name_len] != '\0') name_len++;
+        // Also validate: only allow printable ASCII + ':'
+        while (name_len > 0 && (in[name_len-1] < 0x20 || in[name_len-1] > 0x7E))
+            name_len--;
+        std::string name(reinterpret_cast<const char*>(in), name_len);
+        LOG_DEBUG("SM: GetService cleaned name='%s' (raw_len=%zu, clean_len=%zu)", name.c_str(), in_sz, name_len);
 
         // Resolve service name to init function and call EnsureService
         if (name == "vi:" || name == "vi:m")            EnsureService(name.c_str(), ViInitialize);

@@ -133,8 +133,11 @@ public:
     }
 
 private:
-    bool HandleInitialize(const u8*, size_t, u8*, size_t* out_sz) {
+    bool HandleInitialize(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
         LOG_DEBUG("HID: Initialize");
+        // libnx hidInitialize 将响应中的 move/copy handles 作为共享内存句柄
+        // 我们不返回句柄（由 GetSharedMemory 命令处理），只返回空成功响应
+        // 根据 Switchbrew: Initialize cmd 0 返回空响应 (仅 CMIF 头)
         *out_sz = 0;
         return true;
     }
