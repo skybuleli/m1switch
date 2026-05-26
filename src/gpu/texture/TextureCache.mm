@@ -873,6 +873,13 @@ u64 TextureCache::MakeSamplerKey(const SamplerInfo& info) const {
     key ^= (u64)(info.max_lod * 256.0f) << 32;
     key ^= (u64)(info.anisotropy) << 44;
     key ^= (u64)(info.lod_bias * 256.0f) << 48;
+
+    // Hash border color: XOR the raw 16 bytes as two u64 halves
+    // (no quantization loss, no bit-position collisions)
+    u64 bc_lo = 0, bc_hi = 0;
+    std::memcpy(&bc_lo, info.border_color, 8);
+    std::memcpy(&bc_hi, info.border_color + 2, 8);
+    key ^= bc_lo ^ bc_hi;
     return key;
 }
 
@@ -882,6 +889,29 @@ u64 TextureCache::MakeSamplerKey(const SamplerInfo& info) const {
 //
 // Creates MTLSamplerState from Maxwell TSC parameters, cached
 // by key derived from all sampler fields.
+
+// ── Map Maxwell border_color[4] f32 to MTLSamplerBorderColor ──
+// Metal supports only three border colors. We pick the closest match
+// to the guest GPU's 4-component float border color.
+static MTLSamplerBorderColor MapBorderColor(const f32 bc[4]) {
+    // Metal supports only three border colors:
+    //   TransparentBlack = (0, 0, 0, 0)
+    //   OpaqueBlack      = (0, 0, 0, 1)
+    //   OpaqueWhite      = (1, 1, 1, 1)
+    //
+    // Use minimum Euclidean distance to select the closest match.
+    // Pre-compute squared distances to each candidate.
+    auto sq = [](f32 x) { return x * x; };
+    f32 d_transparent = sq(bc[0]) + sq(bc[1]) + sq(bc[2]) + sq(bc[3]);
+    f32 d_opaque_black = sq(bc[0]) + sq(bc[1]) + sq(bc[2]) + sq(bc[3] - 1.0f);
+    f32 d_opaque_white = sq(bc[0] - 1.0f) + sq(bc[1] - 1.0f) + sq(bc[2] - 1.0f) + sq(bc[3] - 1.0f);
+
+    if (d_opaque_white <= d_opaque_black && d_opaque_white <= d_transparent)
+        return MTLSamplerBorderColorOpaqueWhite;
+    if (d_opaque_black <= d_transparent)
+        return MTLSamplerBorderColorOpaqueBlack;
+    return MTLSamplerBorderColorTransparentBlack;
+}
 
 id<MTLSamplerState> TextureCache::GetOrCreateSampler(const SamplerInfo& info) {
     u64 key = MakeSamplerKey(info);
@@ -945,6 +975,13 @@ id<MTLSamplerState> TextureCache::GetOrCreateSampler(const SamplerInfo& info) {
         desc.maxAnisotropy = aniso_table[info.anisotropy];
     }
 
+    // ── Border color ─────────────────────────────────────
+    // Only set when wrap mode uses ClampToBorderColor
+    bool needs_border = (info.wrap_u == 3 || info.wrap_v == 3 || info.wrap_w == 3);
+    if (needs_border) {
+        desc.borderColor = MapBorderColor(info.border_color);
+    }
+
     id<MTLSamplerState> sampler = [device_ newSamplerStateWithDescriptor:desc];
     [desc release];
 
@@ -970,10 +1007,17 @@ SamplerInfo TextureCache::ParseTSC(const u8* sampler_pool, u64 offset) const {
 
     const u8* entry = sampler_pool + offset;
 
-    // TSC entry layout (per Switch GPU, 8 bytes per entry):
-    // word0: bits[15:0]  = min_filter (4 bits) | mag_filter (4 bits) | ...
-    //        bits[31:16] = wrap modes
-    // word1: LOD / anisotropy / border color
+    // TSC entry layout (per Maxwell GPU, 32 bytes per entry):
+    // word0 (offset 0): min_filter[15:12], mag_filter[11:8], wrap_u[7:4], ...
+    //        wrap_v[3:0], wrap_w[7:0]
+    // word1 (offset 4): min_lod, max_lod, lod_bias, anisotropy
+    // word2 (offset 8):  border color R (f32)
+    // word3 (offset 12): border color G (f32)
+    // word4 (offset 16): border color B (f32)
+    // word5 (offset 20): border color A (f32)
+    // word6-7 (offset 24-31): reserved
+
+    // ── Words 0-1: standard sampler parameters ─────────
     u16 word0 = (u16)entry[0] | ((u16)entry[1] << 8);
     info.min_filter = (word0 >> 8) & 0xF;
     info.mag_filter = (word0 >> 12) & 0xF;
@@ -986,6 +1030,17 @@ SamplerInfo TextureCache::ParseTSC(const u8* sampler_pool, u64 offset) const {
     info.max_lod = (f32)((word1 >> 4) & 0xFFF) / 256.0f;
     info.lod_bias = (f32)(s16)(entry[6] | ((u16)(entry[7] & 0x7F) << 8)) / 256.0f;
     info.anisotropy = (s32)((entry[7] >> 3) & 7);
+
+    // ── Words 2-5: border color (4 x f32 at offset 8) ─
+    f32 border_r, border_g, border_b, border_a;
+    std::memcpy(&border_r, entry + 8,  sizeof(f32));
+    std::memcpy(&border_g, entry + 12, sizeof(f32));
+    std::memcpy(&border_b, entry + 16, sizeof(f32));
+    std::memcpy(&border_a, entry + 20, sizeof(f32));
+    info.border_color[0] = border_r;
+    info.border_color[1] = border_g;
+    info.border_color[2] = border_b;
+    info.border_color[3] = border_a;
 
     return info;
 }

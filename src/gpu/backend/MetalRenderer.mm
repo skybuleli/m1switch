@@ -828,9 +828,10 @@ void MetalRenderer::BindGameTextures() {
         if (tex) SetGameTexture(i, tex);
 
         // ── Bind sampler from TSC pool ──────────────────
-        // TSC entries are paired by index with TIC entries (8 bytes each).
+        // TSC entries are 32 bytes each (8 words × 4 bytes), indexed
+        // in parallel with TIC entries. Border color floats are at offset 8.
         if (sampler_pool && i < state.tex_sampler_max_idx) {
-            SamplerInfo samp_info = texture_cache_->ParseTSC(sampler_pool, (u64)i * 8);
+            SamplerInfo samp_info = texture_cache_->ParseTSC(sampler_pool, (u64)i * 32);
             id<MTLSamplerState> sampler = texture_cache_->GetOrCreateSampler(samp_info);
             if (game_samplers_[i] != sampler) {
                 if (game_samplers_[i]) [game_samplers_[i] release];
