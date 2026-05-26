@@ -357,6 +357,16 @@ SVC(SvcWaitSynchronization) {
         handles[i] = h;
     }
 
+    // 检查 fake 事件句柄（applet 自动信号）
+    for (u32 i = 0; i < num_handles; i++) {
+        if (handles[i] == 0xE0000001) {
+            LOG_DEBUG("WaitSynchronization: fake event 0xE0000001 signaled");
+            Ret(state, 0);
+            state->x[1] = i;
+            return;
+        }
+    }
+
     std::vector<KObject*> objects(num_handles);
     for (u32 i = 0; i < num_handles; i++) {
         objects[i] = KernelHandleTable().Get(handles[i]);

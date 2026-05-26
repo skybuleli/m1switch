@@ -317,19 +317,30 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         } else {
             LOG_INFO("PATCH: 0x44bb28 not found at +0x%llx (inst=0x%08x)", off_ret, *p_ret);
         }
-        // 失败路径: 0x44b5a8 MOVZ W3,#0xB + 0x44b5ac B 0x449dc0
-        // → 改为 MOVZ W0,#0 + RET (确保返回 0)
-        u64 off_ba = 0x44b5a8 - text_start;
-        u64 off_bb = 0x44b5ac - text_start;
-        u32* p_ba = (u32*)(tp + off_ba);
-        u32* p_bb = (u32*)(tp + off_bb);
-        if ((*p_bb & 0xFC000000) == 0x14000000) { // B at 0x44b5ac
-            *p_ba = 0x52800000; // MOVZ W0, #0
-            *p_bb = 0xD65F03C0; // RET
-            __builtin___clear_cache((char*)p_ba, (char*)(p_bb + 1));
-            LOG_INFO("PATCH: 0x44b5a8-0x44b5ac → MOVZ W0,#0; RET");
-        } else {
-            LOG_INFO("PATCH: 0x44b5ac not B (inst=0x%08x)", *p_bb);
+        // 失败路径: 0x44b5a8-0x44b5ac → MOVZ W0,#0; RET
+        {   u64 oa=0x44b5a8-text_start, ob=0x44b5ac-text_start;
+            u32* pa=(u32*)(tp+oa), *pb=(u32*)(tp+ob);
+            if ((*pb & 0xFC000000) == 0x14000000) {
+                *pa=0x52800000; *pb=0xD65F03C0;
+                __builtin___clear_cache((char*)pa,(char*)(pb+1));
+                LOG_INFO("PATCH: 0x44b5a8-0x44b5ac → MOVZ W0,#0; RET");
+            }
+        }
+
+        // NOP init wrapper 中所有 CBZ/CBNZ (0x45655c–0x4565f0)
+        {
+            int n_nop = 0;
+            for (u64 a = 0x456558; a < 0x4565f0; a += 4) {
+                u32* p = (u32*)(tp + (a - text_start));
+                // CBZ/CBNZ 32-bit: bits[31:25]=0_1_1_0_1_0_x → 0x34/0x35<<25
+                u32 top7 = *p & 0xFE000000;
+                if (top7 == 0x34000000 || top7 == 0x35000000) {
+                    *p = 0xD503201F;
+                    __builtin___clear_cache((char*)p, (char*)(p+1));
+                    n_nop++;
+                }
+            }
+            if (n_nop > 0) LOG_INFO("PATCH: NOPed %d CBZ/CBNZ in init wrapper", n_nop);
         }
         // 全局指针: .data+0x7BD0 在运行时写入, 必须在加载前初始化
         // 但这是 .data 段, 在保护之前写

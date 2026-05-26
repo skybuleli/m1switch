@@ -99,8 +99,12 @@ public:
         switch (cmd_id) {
         case 0: // GetEventHandle
             LOG_DEBUG("ICommonStateGetter: GetEventHandle");
-            // Return success with no handle (event not needed for MVP)
-            *out_sz = 0;
+            // 返回 fake 事件句柄 0xE0000001，svcWaitSynchronization 会立即返回
+            if (*out_sz >= 4) {
+                u32 fake_ev = 0xE0000001;
+                std::memcpy(out, &fake_ev, 4);
+                *out_sz = 4;
+            }
             return true;
 
         case 1: // ReceiveMessage
@@ -119,24 +123,26 @@ public:
                 *out_sz = 4;
             }
             return true;
-
         case 6: // GetPerformanceMode
             if (*out_sz >= 4) {
-                out[0] = 1; // 1 = Boost (gives games full GPU), 0 = Normal
+                out[0] = 1; // 1 = Boost, 0 = Normal
                 *out_sz = 4;
             }
             return true;
-
+        case 7: // GetCurrentFocusState
+            if (*out_sz >= 1) {
+                out[0] = 1; // 1 = InFocus
+                *out_sz = 1;
+            }
+            return true;
         case 9: // SetFocusHandlingMode
             LOG_DEBUG("ICommonStateGetter: SetFocusHandlingMode");
             *out_sz = 0;
             return true;
-
         case 10: // SetOutOfFocusSuspendingEnabled
             LOG_DEBUG("ICommonStateGetter: SetOutOfFocusSuspendingEnabled");
             *out_sz = 0;
             return true;
-
         case 11: // GetDefaultDisplayResolution
             LOG_DEBUG("ICommonStateGetter: GetDefaultDisplayResolution");
             if (*out_sz >= 8) {
@@ -162,30 +168,73 @@ public:
 };
 
 // ── AmProxyService (applet proxy sub-session) ───────────────
-// Created by appletOE cmd=0 (GetAppletProxy). Handles proxy session
-// commands: GetAppletResourceUserId, GetWindowController, etc.
+// Created by appletOE cmd=0 (GetAppletProxy). Every cmd returns a sub-session.
 class AmProxyService : public ServiceBase {
+    // 预创建的子服务实例
+    CommonStateGetterService* common_state_;
+    WindowControllerService*  window_ctl_;
+    // 需要新实例的服务
+    class SelfControllerService : public ServiceBase {
+    public:
+        const char* Name() const override { return "SelfController"; }
+        bool HandleCommand(u32, const u8*, size_t, u8* out, size_t* os) override
+            { *os = 0; return true; }
+    } self_ctl_;
+    class AudioControllerService : public ServiceBase {
+    public:
+        const char* Name() const override { return "AudioController"; }
+        bool HandleCommand(u32, const u8*, size_t, u8* out, size_t* os) override
+            { *os = 0; return true; }
+    } audio_ctl_;
+    class DisplayControllerService : public ServiceBase {
+    public:
+        const char* Name() const override { return "DisplayController"; }
+        bool HandleCommand(u32, const u8*, size_t, u8* out, size_t* os) override
+            { *os = 0; return true; }
+    } display_ctl_;
+    class DebugFunctionService : public ServiceBase {
+    public:
+        const char* Name() const override { return "DebugFunctions"; }
+        bool HandleCommand(u32, const u8*, size_t, u8* out, size_t* os) override
+            { *os = 0; return true; }
+    } debug_ctl_;
+    class LibraryAppletCreatorService : public ServiceBase {
+    public:
+        const char* Name() const override { return "LibraryAppletCreator"; }
+        bool HandleCommand(u32, const u8*, size_t, u8* out, size_t* os) override
+            { *os = 0; return true; }
+    } libapplet_creator_;
+
 public:
+    AmProxyService()
+        : common_state_(new CommonStateGetterService())
+        , window_ctl_(new WindowControllerService())
+    {}
+
     const char* Name() const override { return "appletProxy"; }
 
     bool HandleCommand(u32 cmd_id, const u8* in, size_t in_sz,
                        u8* out, size_t* out_sz) override {
+        ServiceBase* sub = nullptr;
         switch (cmd_id) {
-        case 0: // GetAppletResourceUserId
-            if (*out_sz >= 8) {
-                u64 uid = 1; std::memcpy(out, &uid, 8); *out_sz = 8;
-            }
-            return true;
-        case 1: // GetWindowController
-        case 2: // GetSelfController
-        case 3: // GetAudioController
-        case 4: // GetDisplayController
-            LOG_DEBUG("AmProxy: sub-session cmd %u (stub)", cmd_id);
-            *out_sz = 0; return true;
+        case 0:  sub = common_state_; break;              // GetCommonStateGetter
+        case 1:  sub = &self_ctl_; break;                 // GetSelfController
+        case 2:  sub = window_ctl_; break;                // GetWindowController
+        case 3:  sub = &audio_ctl_; break;                // GetAudioController
+        case 4:  sub = &display_ctl_; break;              // GetDisplayController
+        case 11: sub = &libapplet_creator_; break;         // GetLibraryAppletCreator
+        case 1000: sub = &debug_ctl_; break;               // GetDebugFunctions
         default:
             LOG_TRACE("AmProxy: unhandled cmd %u", cmd_id);
             *out_sz = 0; return true;
         }
+        if (sub && *out_sz >= 4) {
+            u32 h = IpcManager::Instance().CreateSession(sub);
+            std::memcpy(out, &h, sizeof(h));
+            *out_sz = 4;
+            LOG_DEBUG("AmProxy: cmd %u → sub-session 0x%x (%s)", cmd_id, h, sub->Name());
+        }
+        return true;
     }
 };
 

@@ -313,6 +313,10 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         needs_move_handle = true;
     } else if ((sname == "appletOE" || sname == "appletAE") && cmd_id == 0) {
         needs_move_handle = true;
+    } else if (cmd_id <= 1000 && session && session->service &&
+               strcmp(session->service->Name(), "appletProxy") == 0) {
+        // applet 代理会话的所有子对象命令都返回 move handle
+        needs_move_handle = true;
     }
 
     // SM::Initialize (cmd=0): 返回会话本身的句柄作为 copy handle
