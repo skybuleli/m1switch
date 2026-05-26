@@ -25,38 +25,105 @@ u32 Engine3D::GetRegister(u32 method) const {
 void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
     is_draw = false;
 
-    // Quick dispatch table for common methods
-    switch (static_cast<Method3D>(method)) {
+    // ── 数组方法范围路由 ──────────────────────────────────────
+    // GPFifo Increasing 模式会发送 method, method+1, method+2 ...
+    // 这些不能被 switch 枚举匹配，需要范围检查先行路由。
 
-    // ── Render targets ─────────────────────────────
-    case Method3D::RenderTarget:
-        HandleRenderTarget(0, value);
-        break;
+    // RenderTarget: 0x200 + i*8 (i=0..7), 每组 8 个子寄存器
+    if (method >= 0x200 && method < 0x200 + 8*8) {
+        u32 offset = method - 0x200;
+        HandleRenderTarget(offset / 8, value);
+        return;
+    }
+    // ViewportTransform: 0x280 + i (i=0..15*6=95)
+    if (method >= 0x280 && method < 0x280 + 16*6) {
+        HandleViewport(method - 0x280, value);
+        return;
+    }
+    // Scissor: 0x380 + i (i=0..15)
+    if (method >= static_cast<u32>(Method3D::Scissor) &&
+        method < static_cast<u32>(Method3D::Scissor) + 16) {
+        HandleScissor(method - static_cast<u32>(Method3D::Scissor), value);
+        return;
+    }
+    // VertexAttrib: 0x458 + i (i=0..31)
+    if (method >= static_cast<u32>(Method3D::VertexAttribState) &&
+        method < static_cast<u32>(Method3D::VertexAttribState) + 32) {
+        HandleVertexAttrib(method - static_cast<u32>(Method3D::VertexAttribState), value);
+        return;
+    }
+    // ColorBlendEnable: 0x4D8 + i (i=0..7)
+    if (method >= static_cast<u32>(Method3D::ColorBlendEnable) &&
+        method < static_cast<u32>(Method3D::ColorBlendEnable) + 8) {
+        u32 i = method - static_cast<u32>(Method3D::ColorBlendEnable);
+        if (i < MAX_BLEND_TARGETS) {
+            state_.blend[i].enabled = (value != 0);
+        }
+        return;
+    }
+    // StencilFrontFuncRef: 0x4E5
+    if (method == static_cast<u32>(Method3D::StencilFrontFuncRef)) {
+        state_.depth_stencil.stencil_front_ref = value & 0xFF;
+        return;
+    }
+    // StencilFrontFuncMask: 0x4E6
+    if (method == static_cast<u32>(Method3D::StencilFrontFuncMask)) {
+        state_.depth_stencil.stencil_front_mask = value & 0xFF;
+        return;
+    }
+    // StencilFrontMask: 0x4E7 (write mask)
+    if (method == static_cast<u32>(Method3D::StencilFrontMask)) {
+        state_.depth_stencil.stencil_front_writemask = value & 0xFF;
+        return;
+    }
+    // ColorWriteMask: 0x680 + i (i=0..7)
+    if (method >= static_cast<u32>(Method3D::ColorWriteMask) &&
+        method < static_cast<u32>(Method3D::ColorWriteMask) + 8) {
+        u32 i = method - static_cast<u32>(Method3D::ColorWriteMask);
+        if (i < MAX_BLEND_TARGETS) {
+            state_.blend[i].color_mask = value & 0xF;
+        }
+        return;
+    }
+    // VertexArray: 0x700 + i*4 + sub (i=0..15)
+    if (method >= static_cast<u32>(Method3D::VertexArray) &&
+        method < static_cast<u32>(Method3D::VertexArray) + 16*4) {
+        HandleVertexArray(method - static_cast<u32>(Method3D::VertexArray), value);
+        return;
+    }
+    // IndependentBlend: 0x780 + i (i=0..7, 6 个子寄存器)
+    if (method >= static_cast<u32>(Method3D::IndependentBlend) &&
+        method < static_cast<u32>(Method3D::IndependentBlend) + 8*7) {
+        HandleBlend(method - static_cast<u32>(Method3D::IndependentBlend), value);
+        return;
+    }
+    // VertexArrayLimit: 0x7C0 + i (i=0..15)
+    if (method >= static_cast<u32>(Method3D::VertexArrayLimit) &&
+        method < static_cast<u32>(Method3D::VertexArrayLimit) + 16) {
+        LOG_TRACE("VertexArrayLimit[%u] = 0x%x", method - static_cast<u32>(Method3D::VertexArrayLimit), value);
+        return;
+    }
+    // SetProgram: 0x800 + i (shader stages)
+    if (method >= static_cast<u32>(Method3D::SetProgram) &&
+        method < static_cast<u32>(Method3D::SetProgram) + 6*2) {
+        HandleShader(method - static_cast<u32>(Method3D::SetProgram), value);
+        return;
+    }
+    // IsVertexArrayPerInstance: 0x620 + i (i=0..15)
+    if (method >= static_cast<u32>(Method3D::IsVertexArrayPerInstance) &&
+        method < static_cast<u32>(Method3D::IsVertexArrayPerInstance) + 16) {
+        u32 i = method - static_cast<u32>(Method3D::IsVertexArrayPerInstance);
+        if (i < MAX_VERTEX_ARRAYS) {
+            state_.vertex_arrays[i].divisor = (value != 0) ? 1 : 0;
+        }
+        return;
+    }
+
+    // ── 非数组方法：switch 分发 ────────────────────────────────
+    switch (static_cast<Method3D>(method)) {
 
     case Method3D::RenderTargetControl:
         state_.rt_control = value;
-        break;
-
-    // ── Viewports ─────────────────────────────────
-    case Method3D::ViewportTransform:
-        HandleViewport(0, value);
-        break;
-
-    case Method3D::Viewport:
-        HandleViewport(0, value);  // Viewport array starts at 0x300
-        break;
-
-    // ── Scissors ──────────────────────────────────
-    case Method3D::Scissor:
-        HandleScissor(0, value);
-        break;
-
-    case Method3D::ScreenScissorHorizontal:
-        LOG_TRACE("ScreenScissorH=0x%x", value);
-        break;
-
-    case Method3D::ScreenScissorVertical:
-        LOG_TRACE("ScreenScissorV=0x%x", value);
         break;
 
     // ── Draw commands ─────────────────────────────
@@ -66,7 +133,7 @@ void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
 
     case Method3D::DrawArraysCount:
         state_.draw_arrays_count = value;
-        is_draw = true;  // Triggers a non-indexed draw
+        is_draw = true;
         break;
 
     case Method3D::DrawElementsFirst:
@@ -75,24 +142,15 @@ void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
 
     case Method3D::DrawElementsCount:
         state_.draw_elements_count = value;
-        is_draw = true;  // Triggers an indexed draw
+        is_draw = true;
         break;
 
-    // ── Vertex arrays ─────────────────────────────
-    case Method3D::VertexArray:
-        HandleVertexArray(0, value);
+    case Method3D::ScreenScissorHorizontal:
+        LOG_TRACE("ScreenScissorH=0x%x", value);
         break;
 
-    case Method3D::VertexArrayLimit:
-        // VBO end address
-        break;
-
-    case Method3D::VertexAttribState:
-        HandleVertexAttrib(0, value);
-        break;
-
-    case Method3D::IsVertexArrayPerInstance:
-        LOG_TRACE("VtxInstanced: 0x%x", value);
+    case Method3D::ScreenScissorVertical:
+        LOG_TRACE("ScreenScissorV=0x%x", value);
         break;
 
     // ── Index buffer ──────────────────────────────
@@ -175,25 +233,68 @@ void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
         state_.depth_stencil.stencil_front_ref = (value >> 16) & 0xFF;
         break;
 
-    // ── Blend ─────────────────────────────────────
-    case Method3D::IndependentBlend:
-        HandleBlend(0, value);
+    case Method3D::StencilFrontOpFail:
+        state_.depth_stencil.stencil_front_fail = static_cast<StencilOp>(value & 0xF);
         break;
+
+    case Method3D::StencilFrontOpZFail:
+        state_.depth_stencil.stencil_front_zfail = static_cast<StencilOp>(value & 0xF);
+        break;
+
+    case Method3D::StencilFrontOpZPass:
+        state_.depth_stencil.stencil_front_zpass = static_cast<StencilOp>(value & 0xF);
+        break;
+
+    case Method3D::StencilTwoSideEnable:
+        state_.depth_stencil.stencil_two_side = (value != 0);
+        break;
+
+    case Method3D::StencilBackFunc:
+        state_.depth_stencil.stencil_back_func = static_cast<CompareOp>(value & 0xF);
+        break;
+
+    case Method3D::StencilBackFuncRef:
+        state_.depth_stencil.stencil_back_ref = value & 0xFF;
+        break;
+
+    case Method3D::StencilBackMask:
+        state_.depth_stencil.stencil_back_mask = value & 0xFF;
+        break;
+
+    case Method3D::StencilBackOpFail:
+        state_.depth_stencil.stencil_back_fail = static_cast<StencilOp>(value & 0xF);
+        break;
+
+    case Method3D::StencilBackOpZFail:
+        state_.depth_stencil.stencil_back_zfail = static_cast<StencilOp>(value & 0xF);
+        break;
+
+    case Method3D::StencilBackOpZPass:
+        state_.depth_stencil.stencil_back_zpass = static_cast<StencilOp>(value & 0xF);
+        break;
+
+    case Method3D::DepthBoundsEnable:
+        state_.depth_stencil.depth_bounds_enable = (value != 0);
+        break;
+
+    case Method3D::DepthBoundsNear:
+        state_.depth_stencil.depth_bounds_near = *reinterpret_cast<const f32*>(&value);
+        break;
+
+    case Method3D::DepthBoundsFar:
+        state_.depth_stencil.depth_bounds_far = *reinterpret_cast<const f32*>(&value);
+        break;
+
+    // ── Blend ─────────────────────────────────────
+    // 注意: ColorBlendEnable, IndependentBlend, ColorWriteMask
+    // 已经在数组预路由中处理，此处不再重复。
 
     case Method3D::IndependentBlendEnable:
         state_.independent_blend = (value != 0);
         break;
 
-    case Method3D::ColorBlendEnable:
-        state_.blend[0].enabled = (value != 0);
-        break;
-
     case Method3D::BlendConstant:
         std::memcpy(state_.blend_const, &value, 4);
-        break;
-
-    case Method3D::ColorWriteMask:
-        state_.blend[0].color_mask = value & 0xF;
         break;
 
     // ── Rasterization ─────────────────────────────
@@ -219,6 +320,50 @@ void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
 
     case Method3D::SetPolygonModeBack:
         state_.polygon_mode_back = static_cast<PolygonMode>(value);
+        break;
+
+    case Method3D::PolygonOffsetPointEnable:
+        state_.polygon_offset_point = (value != 0);
+        break;
+
+    case Method3D::PolygonOffsetLineEnable:
+        state_.polygon_offset_line = (value != 0);
+        break;
+
+    case Method3D::PolygonOffsetFillEnable:
+        state_.polygon_offset_fill = (value != 0);
+        break;
+
+    case Method3D::PolygonOffsetFactor:
+        state_.polygon_offset_factor = *reinterpret_cast<const f32*>(&value);
+        break;
+
+    case Method3D::PolygonOffsetUnits:
+        state_.polygon_offset_units = *reinterpret_cast<const f32*>(&value);
+        break;
+
+    case Method3D::PolygonOffsetClamp:
+        state_.polygon_offset_clamp = *reinterpret_cast<const f32*>(&value);
+        break;
+
+    case Method3D::AlphaTestEnable:
+        state_.alpha_test_enable = (value != 0);
+        break;
+
+    case Method3D::AlphaTestRef:
+        state_.alpha_test_ref = *reinterpret_cast<const f32*>(&value);
+        break;
+
+    case Method3D::AlphaTestFunc:
+        state_.alpha_test_func = static_cast<CompareOp>(value);
+        break;
+
+    case Method3D::ColorLogicOpEnable:
+        state_.logic_op_enable = (value != 0);
+        break;
+
+    case Method3D::ColorLogicOpType:
+        state_.logic_op = static_cast<LogicOp>(value);
         break;
 
     case Method3D::VertexBeginGl:
@@ -360,15 +505,17 @@ void Engine3D::HandleVertexAttrib(u32 index, u32 value) {
 void Engine3D::HandleBlend(u32 index, u32 value) {
     u32 i = index % MAX_BLEND_TARGETS;
     if (i < MAX_BLEND_TARGETS) {
-        // blend[0].EquationRgb, .FuncRgbSrc, .FuncRgbDst, .EquationAlpha, .FuncAlphaSrc, .FuncAlphaDst
         u32 sub = index / MAX_BLEND_TARGETS;
         switch (sub) {
-        case 1: state_.blend[i].color_op = static_cast<BlendOp>(value); break;
-        case 2: state_.blend[i].src_color = static_cast<BlendFactor>(value); break;
-        case 3: state_.blend[i].dst_color = static_cast<BlendFactor>(value); break;
-        case 4: state_.blend[i].alpha_op = static_cast<BlendOp>(value); break;
-        case 5: state_.blend[i].src_alpha = static_cast<BlendFactor>(value); break;
-        case 6: state_.blend[i].dst_alpha = static_cast<BlendFactor>(value); break;
+        case 0:  // 独立 blend enable per target
+            state_.blend[i].enabled = (value & 1) != 0;
+            break;
+        case 1: state_.blend[i].color_op  = static_cast<BlendOp>(value); break;
+        case 2: state_.blend[i].src_color  = static_cast<BlendFactor>(value); break;
+        case 3: state_.blend[i].dst_color  = static_cast<BlendFactor>(value); break;
+        case 4: state_.blend[i].alpha_op   = static_cast<BlendOp>(value); break;
+        case 5: state_.blend[i].src_alpha   = static_cast<BlendFactor>(value); break;
+        case 6: state_.blend[i].dst_alpha   = static_cast<BlendFactor>(value); break;
         }
     }
 }

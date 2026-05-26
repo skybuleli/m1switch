@@ -123,6 +123,23 @@ enum class BlendFactor : u32 {
     SrcAlphaSaturate    = 0x0308,
     ConstantColor       = 0xC001,
     OneMinusConstColor  = 0xC002,
+    ConstantAlpha       = 0xC003,
+    OneMinusConstAlpha  = 0xC004,
+    Src1Color           = 0xC800,
+    OneMinusSrc1Color   = 0xC801,
+    Src1Alpha           = 0xC802,
+    OneMinusSrc1Alpha   = 0xC803,
+};
+
+enum class StencilOp : u32 {
+    Keep           = 1,
+    Zero           = 2,
+    Replace        = 3,
+    IncrClamp      = 4,
+    DecrClamp      = 5,
+    Invert         = 6,
+    IncrWrap       = 7,
+    DecrWrap       = 8,
 };
 
 // ── Per-render target state (0x200 array[8]) ────────────────
@@ -203,7 +220,7 @@ struct BlendState {
     BlendOp   alpha_op       = BlendOp::Add;
     BlendFactor src_alpha    = BlendFactor::One;
     BlendFactor dst_alpha    = BlendFactor::Zero;
-    u32       color_mask     = 0xF;  // RGBA
+    u32       color_mask     = 0xF;  // RGBA write mask
 };
 
 // ── Depth/Stencil test ─────────────────────────────────────
@@ -212,16 +229,27 @@ struct DepthStencilState {
     bool      depth_write    = true;
     CompareOp depth_func     = CompareOp::Less;
     bool      stencil_enable = false;
+    // 前面模板
     CompareOp stencil_front_func = CompareOp::Always;
     u32       stencil_front_ref  = 0;
     u32       stencil_front_mask = 0xFF;
-    u32       stencil_front_fail = 0;
-    u32       stencil_front_zfail = 0;
-    u32       stencil_front_zpass = 0;
-    // Back-face stencil
+    u32       stencil_front_writemask = 0xFF;
+    StencilOp stencil_front_fail = StencilOp::Keep;
+    StencilOp stencil_front_zfail = StencilOp::Keep;
+    StencilOp stencil_front_zpass = StencilOp::Keep;
+    // 背面模板
+    bool      stencil_two_side = false;
     CompareOp stencil_back_func  = CompareOp::Always;
     u32       stencil_back_ref   = 0;
     u32       stencil_back_mask  = 0xFF;
+    u32       stencil_back_writemask = 0xFF;
+    StencilOp stencil_back_fail  = StencilOp::Keep;
+    StencilOp stencil_back_zfail = StencilOp::Keep;
+    StencilOp stencil_back_zpass = StencilOp::Keep;
+    // 深度边界
+    bool      depth_bounds_enable = false;
+    f32       depth_bounds_near   = 0.0f;
+    f32       depth_bounds_far    = 1.0f;
 };
 
 // ── Color clear state ──────────────────────────────────────
@@ -305,6 +333,20 @@ struct alignas(64) GpuState3D {
     u32              primitive_restart_index = 0;
     bool             depth_clamp            = false;
     bool             rasterizer_discard     = false;
+    // 多边形偏移
+    bool             polygon_offset_point   = false;
+    bool             polygon_offset_line    = false;
+    bool             polygon_offset_fill    = false;
+    float            polygon_offset_factor  = 0.0f;
+    float            polygon_offset_units   = 0.0f;
+    float            polygon_offset_clamp   = 0.0f;
+    // Alpha test (逐像素裁剪，需色器模拟)
+    bool             alpha_test_enable      = false;
+    CompareOp        alpha_test_func        = CompareOp::Always;
+    float            alpha_test_ref         = 0.0f;
+    // 逻辑操作
+    bool             logic_op_enable        = false;
+    LogicOp          logic_op               = LogicOp::Copy;
 
     // Multisample
     MultisampleState multisample;

@@ -90,6 +90,13 @@ cmake --build build
 - [x] P0 #6: SPIR-V 规范修复 (opcode/decoration/布局 → 9个 spirv-val 验证全部通过)
 - [x] P0 #7: Render-to-framebuffer (render targets from guest memory → Metal RT textures → screen blit)
 - [x] P0 #8: VBO cache (MTLBuffer reuse via guest-address-keyed cache for VBOs, IBOs & UBOs)
+- [x] P0 #9: TextureCache improvements (LRU eviction + mipmap support)
+- [x] P0 #10: MTLSamplerState from TSC + bind in BindGameTextures
+- [x] P0 #11: Sampler border color support (Maxwell → Metal mapping)
+- [x] P0 #12: Texture cache invalidation and write synchronization
+- [x] P0 #13: Blend state → Metal pipeline (blend enable/factors/ops, color write mask, independent blend, pipeline cache)
+- [x] P0 #14: Depth/stencil state → Metal (depth test/write, stencil front/back ops, two-sided stencil, depth bounds)
+- [x] P0 #15: Engine3D array method dispatch (viewport, scissor, blend, color write mask, vertex arrays, stencil ops, polygon offset, alpha test)
 
 **Phase 3** — Services & IPC (Complete)
 - [x] SM service (service manager)

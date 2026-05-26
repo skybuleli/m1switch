@@ -59,6 +59,9 @@ private:
     MTLCompareFunction ToMetalCompare(CompareOp op);
     MTLVertexFormat ToMetalVertexFormat(u32 size, u32 type);
     MTLPixelFormat RtFormatToMetal(RtFormat fmt);
+    MTLBlendFactor ToMetalBlendFactor(BlendFactor factor);
+    MTLBlendOperation ToMetalBlendOp(BlendOp op);
+    MTLStencilOperation ToMetalStencilOp(StencilOp op);
     void ApplyViewport(id<MTLRenderCommandEncoder> enc);
     void ApplyScissor(id<MTLRenderCommandEncoder> enc);
     void ApplyBlend(id<MTLRenderCommandEncoder> enc);
@@ -78,6 +81,10 @@ private:
 
     bool CompilePipeline();
     id<MTLRenderPipelineState> GetOrCreatePipeline(u64 hash);
+    id<MTLRenderPipelineState> CreatePipelineWithBlend(
+        id<MTLFunction> vertFn, id<MTLFunction> fragFn,
+        MTLPixelFormat colorFormat, MTLPixelFormat depthFormat,
+        const BlendState& blend);
 
     MetalDevice& device_;
     StateTracker* tracker_ = nullptr;

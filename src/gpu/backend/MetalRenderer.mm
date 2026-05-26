@@ -170,6 +170,52 @@ MTLVertexFormat MetalRenderer::ToMetalVertexFormat(u32 size, u32 type) {
     return MTLVertexFormatFloat4;
 }
 
+MTLBlendFactor MetalRenderer::ToMetalBlendFactor(BlendFactor factor) {
+    switch (factor) {
+    case BlendFactor::Zero:               return MTLBlendFactorZero;
+    case BlendFactor::One:                return MTLBlendFactorOne;
+    case BlendFactor::SrcColor:           return MTLBlendFactorSourceColor;
+    case BlendFactor::OneMinusSrcColor:   return MTLBlendFactorOneMinusSourceColor;
+    case BlendFactor::SrcAlpha:           return MTLBlendFactorSourceAlpha;
+    case BlendFactor::OneMinusSrcAlpha:   return MTLBlendFactorOneMinusSourceAlpha;
+    case BlendFactor::DstColor:           return MTLBlendFactorDestinationColor;
+    case BlendFactor::OneMinusDstColor:   return MTLBlendFactorOneMinusDestinationColor;
+    case BlendFactor::DstAlpha:           return MTLBlendFactorDestinationAlpha;
+    case BlendFactor::OneMinusDstAlpha:   return MTLBlendFactorOneMinusDestinationAlpha;
+    case BlendFactor::SrcAlphaSaturate:   return MTLBlendFactorSourceAlphaSaturated;
+    case BlendFactor::ConstantColor:      return MTLBlendFactorBlendColor;
+    case BlendFactor::OneMinusConstColor: return MTLBlendFactorOneMinusBlendColor;
+    case BlendFactor::ConstantAlpha:      return MTLBlendFactorBlendAlpha;
+    case BlendFactor::OneMinusConstAlpha: return MTLBlendFactorOneMinusBlendAlpha;
+    default:                              return MTLBlendFactorOne;
+    }
+}
+
+MTLBlendOperation MetalRenderer::ToMetalBlendOp(BlendOp op) {
+    switch (op) {
+    case BlendOp::Add:             return MTLBlendOperationAdd;
+    case BlendOp::Subtract:        return MTLBlendOperationSubtract;
+    case BlendOp::ReverseSubtract: return MTLBlendOperationReverseSubtract;
+    case BlendOp::Min:             return MTLBlendOperationMin;
+    case BlendOp::Max:             return MTLBlendOperationMax;
+    default:                       return MTLBlendOperationAdd;
+    }
+}
+
+MTLStencilOperation MetalRenderer::ToMetalStencilOp(StencilOp op) {
+    switch (op) {
+    case StencilOp::Keep:      return MTLStencilOperationKeep;
+    case StencilOp::Zero:      return MTLStencilOperationZero;
+    case StencilOp::Replace:   return MTLStencilOperationReplace;
+    case StencilOp::IncrClamp: return MTLStencilOperationIncrementClamp;
+    case StencilOp::DecrClamp: return MTLStencilOperationDecrementClamp;
+    case StencilOp::Invert:    return MTLStencilOperationInvert;
+    case StencilOp::IncrWrap:  return MTLStencilOperationIncrementWrap;
+    case StencilOp::DecrWrap:  return MTLStencilOperationDecrementWrap;
+    default:                   return MTLStencilOperationKeep;
+    }
+}
+
 void MetalRenderer::ApplyViewport(id<MTLRenderCommandEncoder> enc) {
     if (!tracker_) return;
     const auto& state = tracker_->GetState3D();
@@ -217,16 +263,47 @@ void MetalRenderer::ApplyBlend(id<MTLRenderCommandEncoder> enc) {
 void MetalRenderer::ApplyDepthStencil(id<MTLRenderCommandEncoder> enc) {
     if (!tracker_) return;
     const auto& ds = tracker_->GetState3D().depth_stencil;
-    if (ds.depth_enabled || ds.stencil_enable) {
-        MTLDepthStencilDescriptor* desc = [[MTLDepthStencilDescriptor alloc] init];
-        desc.depthCompareFunction = ds.depth_enabled ? ToMetalCompare(ds.depth_func) : MTLCompareFunctionAlways;
-        desc.depthWriteEnabled = ds.depth_write;
-        id<MTLDepthStencilState> state = [device_.Device() newDepthStencilStateWithDescriptor:desc];
-        [desc release];
-        if (state) {
-            [enc setDepthStencilState:state];
-            [state release];
+
+    MTLDepthStencilDescriptor* desc = [[MTLDepthStencilDescriptor alloc] init];
+    desc.depthCompareFunction = ds.depth_enabled ? ToMetalCompare(ds.depth_func) : MTLCompareFunctionAlways;
+    desc.depthWriteEnabled = ds.depth_write;
+
+    if (ds.stencil_enable) {
+        MTLStencilDescriptor* front = [[MTLStencilDescriptor alloc] init];
+        front.stencilCompareFunction = ToMetalCompare(ds.stencil_front_func);
+        front.stencilFailureOperation = ToMetalStencilOp(ds.stencil_front_fail);
+        front.depthFailureOperation    = ToMetalStencilOp(ds.stencil_front_zfail);
+        front.depthStencilPassOperation = ToMetalStencilOp(ds.stencil_front_zpass);
+        front.readMask  = ds.stencil_front_mask;
+        front.writeMask = ds.stencil_front_writemask;
+
+        if (ds.stencil_two_side) {
+            MTLStencilDescriptor* back = [[MTLStencilDescriptor alloc] init];
+            back.stencilCompareFunction = ToMetalCompare(ds.stencil_back_func);
+            back.stencilFailureOperation = ToMetalStencilOp(ds.stencil_back_fail);
+            back.depthFailureOperation    = ToMetalStencilOp(ds.stencil_back_zfail);
+            back.depthStencilPassOperation = ToMetalStencilOp(ds.stencil_back_zpass);
+            back.readMask  = ds.stencil_back_mask;
+            back.writeMask = ds.stencil_back_writemask;
+            desc.backFaceStencil = back;
+            [back release];
+        } else {
+            desc.backFaceStencil = front;
         }
+        desc.frontFaceStencil = front;
+        [front release];
+    }
+
+    id<MTLDepthStencilState> state = [device_.Device() newDepthStencilStateWithDescriptor:desc];
+    [desc release];
+
+    if (state) {
+        [enc setDepthStencilState:state];
+        if (ds.stencil_enable) {
+            [enc setStencilFrontReferenceValue:ds.stencil_front_ref
+                               backReferenceValue:(ds.stencil_two_side ? ds.stencil_back_ref : ds.stencil_front_ref)];
+        }
+        [state release];
     } else if (depth_stencil_) {
         [enc setDepthStencilState:depth_stencil_];
     }
@@ -387,11 +464,11 @@ bool MetalRenderer::CompilePipeline() {
     const auto& state = tracker_->GetState3D();
     if (state.program_region == 0) return false;
 
-    // Detect program change since last compilation
+    // 检测着色器程序是否有变化
     if (shaders_compiled_ && last_program_region_ == state.program_region &&
         last_shader_offsets_[0] == state.shaders[0].offset &&
         last_shader_offsets_[1] == state.shaders[5].offset) {
-        return true; // Already compiled for this program
+        return true;  // 着色器未变化
     }
 
     auto* mem = tracker_->GetMemory();
@@ -424,7 +501,7 @@ bool MetalRenderer::CompilePipeline() {
             last_program_region_ = state.program_region;
             last_shader_offsets_[0] = state.shaders[0].offset;
             last_shader_offsets_[1] = state.shaders[5].offset;
-            LOG_INFO("Game shader pipeline compiled successfully");
+            LOG_INFO("游戏着色器管线编译成功");
             return true;
         }
     }
@@ -436,6 +513,46 @@ id<MTLRenderPipelineState> MetalRenderer::GetOrCreatePipeline(u64 hash) {
     auto it = pipeline_cache_.find(hash);
     if (it != pipeline_cache_.end()) return it->second;
     return nil;
+}
+
+id<MTLRenderPipelineState> MetalRenderer::CreatePipelineWithBlend(
+    id<MTLFunction> vertFn, id<MTLFunction> fragFn,
+    MTLPixelFormat colorFormat, MTLPixelFormat depthFormat,
+    const BlendState& blend) {
+    if (!vertFn || !fragFn) return nil;
+
+    MTLRenderPipelineDescriptor* desc = [[MTLRenderPipelineDescriptor alloc] init];
+    desc.vertexFunction = vertFn;
+    desc.fragmentFunction = fragFn;
+
+    // 色渲染目标
+    desc.colorAttachments[0].pixelFormat = colorFormat;
+    if (blend.enabled) {
+        desc.colorAttachments[0].blendingEnabled = YES;
+        desc.colorAttachments[0].rgbBlendOperation = ToMetalBlendOp(blend.color_op);
+        desc.colorAttachments[0].sourceRGBBlendFactor = ToMetalBlendFactor(blend.src_color);
+        desc.colorAttachments[0].destinationRGBBlendFactor = ToMetalBlendFactor(blend.dst_color);
+        desc.colorAttachments[0].alphaBlendOperation = ToMetalBlendOp(blend.alpha_op);
+        desc.colorAttachments[0].sourceAlphaBlendFactor = ToMetalBlendFactor(blend.src_alpha);
+        desc.colorAttachments[0].destinationAlphaBlendFactor = ToMetalBlendFactor(blend.dst_alpha);
+    } else {
+        desc.colorAttachments[0].blendingEnabled = NO;
+    }
+    // 写入掩码 (RGBA 各占 1 bit)
+    desc.colorAttachments[0].writeMask = (MTLColorWriteMask)(
+        ((blend.color_mask & 1) ? MTLColorWriteMaskRed : 0) |
+        ((blend.color_mask & 2) ? MTLColorWriteMaskGreen : 0) |
+        ((blend.color_mask & 4) ? MTLColorWriteMaskBlue : 0) |
+        ((blend.color_mask & 8) ? MTLColorWriteMaskAlpha : 0));
+
+    // 深度目标
+    if (depthFormat != MTLPixelFormatInvalid) {
+        desc.depthAttachmentPixelFormat = depthFormat;
+    }
+
+    id<MTLRenderPipelineState> pipeline = device_.CreateRenderPipeline(desc);
+    [desc release];
+    return pipeline;
 }
 
 void MetalRenderer::IssueDraw(id<MTLRenderCommandEncoder> enc,
@@ -907,10 +1024,6 @@ void MetalRenderer::RenderFrame(id<MTLCommandBuffer> cmdBuf,
                             rpDesc.depthAttachment.storeAction = MTLStoreActionStore;
                         }
                     } else {
-                        // Direct-to-screen: reuse the same passDesc for all batches
-                        // (Note: the drawable is consumed by the first encoder,
-                        //  but in practice pipeline_key rarely changes mid-frame
-                        //  for the direct path, so this is effectively one batch)
                         rpDesc = [passDesc retain];
                         IssueClear(cmdBuf, rpDesc);
                     }
@@ -918,10 +1031,38 @@ void MetalRenderer::RenderFrame(id<MTLCommandBuffer> cmdBuf,
                     // Create encoder for this batch
                     batch_enc = [cmdBuf renderCommandEncoderWithDescriptor:rpDesc];
 
-                    // Compile and set pipeline
+                    // Compile shader if needed, then look up or create blend-specific pipeline
                     CompilePipeline();
-                    id<MTLRenderPipelineState> pipeline = game_pipeline_
-                        ? game_pipeline_ : fallback_pipeline_;
+
+                    id<MTLRenderPipelineState> pipeline = nil;
+                    // Check pipeline cache for existing blend-configured pipeline
+                    pipeline = GetOrCreatePipeline(draw.pipeline_key);
+
+                    if (!pipeline) {
+                        // Create a new pipeline with current blend state
+                        MTLPixelFormat color_fmt = is_rt_path
+                            ? RtFormatToMetal(tracker_->GetState3D().rt[0].format)
+                            : MTLPixelFormatBGRA8Unorm_sRGB;
+                        MTLPixelFormat depth_fmt = depth_texture_
+                            ? depth_texture_.pixelFormat : MTLPixelFormatInvalid;
+
+                        if (vert_result_.success && frag_result_.success) {
+                            pipeline = CreatePipelineWithBlend(
+                                (id<MTLFunction>)vert_result_.vertex_function,
+                                (id<MTLFunction>)frag_result_.fragment_function,
+                                color_fmt, depth_fmt,
+                                tracker_->GetState3D().blend[0]);
+                        }
+
+                        if (pipeline) {
+                            pipeline_cache_[draw.pipeline_key] = pipeline;
+                        }
+                    }
+
+                    if (!pipeline) {
+                        pipeline = game_pipeline_ ? game_pipeline_ : fallback_pipeline_;
+                    }
+
                     [batch_enc setRenderPipelineState:pipeline];
 
                     // Apply batch-level state (textures, uniforms)

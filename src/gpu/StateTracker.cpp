@@ -32,6 +32,22 @@ u64 StateTracker::ComputePipelineKey(const GpuState3D& state) {
     if (state.depth_target.enabled) {
         key ^= (u64)state.depth_target.format << 56;
     }
+    // Include blend state for RT[0] (most common)
+    if (state.blend[0].enabled) {
+        key ^= ((u64)state.blend[0].color_op << 16) ^
+               ((u64)state.blend[0].src_color << 20) ^
+               ((u64)state.blend[0].dst_color << 24) ^
+               ((u64)state.blend[0].alpha_op << 28) ^
+               ((u64)state.blend[0].src_alpha << 32) ^
+               ((u64)state.blend[0].dst_alpha << 36);
+    }
+    // Include color write mask
+    key ^= (u64)state.blend[0].color_mask << 48;
+    // Include depth/stencil state
+    if (state.depth_stencil.depth_enabled) {
+        key ^= (u64)state.depth_stencil.depth_func << 38;
+        key ^= (u64)state.depth_stencil.depth_write << 42;
+    }
     return key;
 }
 

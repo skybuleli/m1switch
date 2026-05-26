@@ -1,0 +1,128 @@
+{
+  "project": "m1switch",
+  "version": "0.1.0",
+  "toolchain": {
+    "cmake": "3.20+",
+    "compiler": "AppleClang 15+ (arm64)",
+    "build_command": "cmake --build build --config Release",
+    "test_command": "cmake --build build && ./build/m1switch_headless"
+  },
+  "milestones": {
+    "m0": {
+      "name": "Engineering Foundation",
+      "description": "Build system, logging, config, Metal device init, AppKit skeleton",
+      "depends_on": [],
+      "tests": ["t0.1", "t0.2"],
+      "acceptance": {
+        "min_tests_pass": 2,
+        "build_succeeds": true
+      }
+    },
+    "m1": {
+      "name": "PLASTIC",
+      "description": "CPU native execution, memory mapping, SVC dispatch",
+      "depends_on": ["m0"],
+      "tests": ["t1.1", "t1.2", "t1.3"],
+      "acceptance": {
+        "min_tests_pass": 3,
+        "svc_dispatch_works": true
+      }
+    },
+    "m2": {
+      "name": "COPPER",
+      "description": "HLE services (SM, FS, NV, HID, VI) + IPC",
+      "depends_on": ["m1"],
+      "tests": ["t2.1", "t2.2", "t2.3"],
+      "acceptance": {
+        "min_tests_pass": 3,
+        "ipc_roundtrip_works": true
+      }
+    },
+    "m3": {
+      "name": "IRON",
+      "description": "First triangle via Metal (GPU command parser, shader, renderer)",
+      "depends_on": ["m2"],
+      "tests": ["t3.1", "t3.2", "t3.3"],
+      "acceptance": {
+        "min_tests_pass": 3,
+        "framebuffer_not_black": true
+      }
+    }
+  },
+  "tests": {
+    "t0.1": {
+      "name": "Build succeeds",
+      "type": "build",
+      "command": "cmake --build build --config Release",
+      "expected": { "exit_code": 0 }
+    },
+    "t0.2": {
+      "name": "Unit tests pass",
+      "type": "unit",
+      "command": "./build/m1switch_tests",
+      "expected": { "exit_code": 0 }
+    },
+    "t1.1": {
+      "name": "SVC ExitProcess",
+      "type": "headless",
+      "command": "./build/m1switch_headless test-roms/exit.nro --timeout=5",
+      "expected": { "exit_code": 0, "output_contains": "GUEST EXITED NORMALLY" }
+    },
+    "t1.2": {
+      "name": "Memory mapping",
+      "type": "unit",
+      "command": "./build/m1switch_tests --filter=Memory",
+      "expected": { "exit_code": 0 }
+    },
+    "t1.3": {
+      "name": "SVC dispatch",
+      "type": "unit",
+      "command": "./build/m1switch_tests --filter=Kernel",
+      "expected": { "exit_code": 0 }
+    },
+    "t2.1": {
+      "name": "IPC Service Discovery",
+      "type": "headless",
+      "command": "./build/m1switch_headless test-roms/ipc_test.nro --timeout=10",
+      "expected": { "exit_code": 0 }
+    },
+    "t2.2": {
+      "name": "File system read",
+      "type": "headless",
+      "command": "./build/m1switch_headless test-roms/fs_test.nro --timeout=10",
+      "expected": { "exit_code": 0 }
+    },
+    "t2.3": {
+      "name": "GPU init",
+      "type": "unit",
+      "command": "./build/m1switch_tests --filter=Gpu",
+      "expected": { "exit_code": 0 }
+    },
+    "t3.1": {
+      "name": "Maxwell decoder",
+      "type": "unit",
+      "command": "./build/m1switch_tests --filter=MaxwellDecoder",
+      "expected": { "exit_code": 0 }
+    },
+    "t3.2": {
+      "name": "SPIR-V emission",
+      "type": "unit",
+      "command": "./build/m1switch_tests --filter=SpirvEmission",
+      "expected": { "exit_code": 0 }
+    },
+    "t3.3": {
+      "name": "Clear color",
+      "type": "headless",
+      "command": "./build/m1switch_headless test-roms/clear_red.nro --timeout=10",
+      "expected": { "exit_code": 0 }
+    }
+  },
+  "benchmarks": {
+    "b.svc.dispatch": {
+      "name": "SVC dispatch roundtrip",
+      "command": "./build/m1switch_headless test-roms/bench_svc.nro --timeout=10",
+      "metric": "svc_per_second",
+      "max_regression_pct": 15
+    }
+  }
+}
