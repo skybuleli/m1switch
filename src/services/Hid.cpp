@@ -3,6 +3,12 @@
 #include "memory/Memory.h"
 #include <cstring>
 
+// ── Input subsystem C API ──────────────────────────────────
+extern "C" {
+void Input_Poll();
+void Input_WriteToHidSharedMemory(u8* mem, u64 size);
+}
+
 // ── HID (Human Interface Device) Service ────────────────────
 // Phase P0: minimal stub — returns empty input state.
 // Homebrew initializes HID to get controller/touch input.
@@ -37,8 +43,20 @@ public:
                        u8* out, size_t* out_sz) override {
         switch (cmd_id) {
         case 0: // Initialize
-            LOG_DEBUG("HID: Initialize"); *out_sz = 0; return true;
+            LOG_DEBUG("HID: Initialize");
+            Input_Poll();
+            if (g_hid_memory) {
+                auto* ptr = g_hid_memory->Pointer(HID_SHARED_MEM);
+                if (ptr) Input_WriteToHidSharedMemory(ptr, HID_SHARED_SIZE);
+            }
+            *out_sz = 0; return true;
         case 1: // GetSharedMemoryAddress
+            // Poll input and update shared memory before returning address
+            Input_Poll();
+            if (g_hid_memory) {
+                auto* ptr = g_hid_memory->Pointer(HID_SHARED_MEM);
+                if (ptr) Input_WriteToHidSharedMemory(ptr, HID_SHARED_SIZE);
+            }
             return HandleGetSharedMem(in, in_sz, out, out_sz);
         case 2: // ActivateNpad
             *out_sz = 0; return true;

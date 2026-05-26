@@ -53,7 +53,8 @@ public:
             *out_sz = 0; return true;
         default:
             LOG_TRACE("PM: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };
@@ -77,7 +78,8 @@ public:
             *out_sz = 0; return true;
         default:
             LOG_TRACE("NIFM: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };
@@ -100,7 +102,8 @@ public:
             *out_sz = 0; return true;
         default:
             LOG_TRACE("RO: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };
@@ -157,7 +160,8 @@ public:
             *out_sz = 0; return true;
         default:
             LOG_TRACE("BTM: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };
@@ -182,7 +186,8 @@ public:
             *out_sz = 0; return true;
         default:
             LOG_TRACE("NFC: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };

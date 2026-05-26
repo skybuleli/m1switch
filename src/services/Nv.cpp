@@ -24,13 +24,17 @@ enum class NvIoctl : u32 {
     NvmapAlloc  = 0xC0200004,
     NvmapFree   = 0xC0180005,
 
-    GpuAllocAs  = 0x80080003,
-    GpuWaitFifo = 0xC0080005,
+    GpuAllocAs       = 0x80080003,
+    GpuWaitFifo      = 0xC0080005,
     GpuChannelZcullBind = 0xC010000B,
-    GpuSetNvmapFd = 0x40080000,
-    GpuAllocObjCtx = 0xC010000F,
-    GpuSubmitGpfifo = 0xC0480012,
-    GpuReturn = 0x4008001C,
+    GpuSetNvmapFd    = 0x40080000,
+    GpuAllocObjCtx   = 0xC010000F,
+    GpuSubmitGpfifo  = 0xC0480012,
+    GpuAllocGpfifo   = 0xC0100014,
+    GpuSetTimeout    = 0xC0080016,
+    GpuGetErrorNotifier = 0xC0100018,
+    GpuGetParam      = 0xC008001A,
+    GpuReturn         = 0x4008001C,
 };
 
 // ── NVDRV service (main control) ────────────────────────────
@@ -50,7 +54,8 @@ public:
             return HandleOpen(in, in_sz, out, out_sz);
         default:
             LOG_WARN("NVDRV: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 
@@ -84,7 +89,8 @@ public:
             return HandleAlloc(in, in_sz, out, out_sz);
         default:
             LOG_WARN("NVMAP: unhandled ioctl 0x%x", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 
@@ -143,15 +149,25 @@ public:
             return HandleSubmitGpfifo(in, in_sz, out, out_sz);
         case NvIoctl::GpuChannelZcullBind:
             *out_sz = 0; return true;
+        case NvIoctl::GpuAllocGpfifo:
+            return HandleAllocGpfifo(in, in_sz, out, out_sz);
+        case NvIoctl::GpuSetTimeout:
+            LOG_DEBUG("NVGPU: SetTimeout"); *out_sz = 0; return true;
+        case NvIoctl::GpuGetErrorNotifier:
+            return HandleGetErrorNotifier(in, in_sz, out, out_sz);
+        case NvIoctl::GpuGetParam:
+            return HandleGetParam(in, in_sz, out, out_sz);
         default:
             LOG_WARN("NVGPU: unhandled ioctl 0x%x", raw_cmd);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 
 private:
     int channel_fd_ = 0;
     u64 as_handle_ = 0;
+    u32 gpfifo_entries_ = 0;
     bool is_channel = false;
 
     bool HandleAllocAs(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
@@ -166,6 +182,40 @@ private:
         channel_fd_ = 0x1001;
         LOG_DEBUG("NVGPU: AllocObjCtx → fd=%d", channel_fd_);
         if (*out_sz >= 4) { std::memcpy(out, &channel_fd_, 4); *out_sz = 4; }
+        return true;
+    }
+
+    // ── AllocGpfifo: allocate a GPFIFO for the channel ──
+    bool HandleAllocGpfifo(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
+        u32 num_entries = 0x400; // default 1024 entries
+        if (in_sz >= 4) std::memcpy(&num_entries, in, 4);
+        gpfifo_entries_ = num_entries;
+        LOG_DEBUG("NVGPU: AllocGpfifo entries=%u", num_entries);
+        if (*out_sz >= 4) { std::memcpy(out, &num_entries, 4); *out_sz = 4; }
+        return true;
+    }
+
+    // ── GetErrorNotifier: return an error notifier handle ──
+    bool HandleGetErrorNotifier(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
+        LOG_DEBUG("NVGPU: GetErrorNotifier → 0 (disabled)");
+        if (*out_sz >= 8) {
+            std::memset(out, 0, 8);
+            *out_sz = 8;
+        }
+        return true;
+    }
+
+    // ── GetParam: return GPU parameters ──
+    bool HandleGetParam(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
+        u32 param = 0;
+        if (in_sz >= 4) std::memcpy(&param, in, 4);
+        u32 value = 0;
+        switch (param) {
+        case 0:  value = 0xF; break;   // Maxwell GPU class (NV_GPU_CLASS_ID)
+        case 1:  value = 0x200; break; // engine type (3D graphics)
+        default: LOG_TRACE("NVGPU: GetParam(%u) → 0", param); break;
+        }
+        if (*out_sz >= 4) { std::memcpy(out, &value, 4); *out_sz = 4; }
         return true;
     }
 

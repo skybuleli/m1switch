@@ -32,9 +32,10 @@ public:
 
         case 40: // GetAppletResource
             LOG_DEBUG("AM: GetAppletResource");
-            // Returns a handle — Phase 6: return dummy
+            // Return a valid applet resource handle (used by VI service)
             if (*out_sz >= 4) {
-                std::memset(out, 0, 4);
+                u32 handle = 0x01000000; // IAppletResource handle
+                std::memcpy(out, &handle, 4);
                 *out_sz = 4;
             }
             return true;
@@ -46,30 +47,54 @@ public:
             }
             return true;
 
-        case 150: // GetMainAppletIdentityInfo
-            LOG_DEBUG("AM: GetMainAppletIdentityInfo");
+        // ── IWindowController commands (separate interface, IDs start from 0) ──
+        case 2:  // GetAppletResourceUserId  (IWindowController)
+            if (*out_sz >= 8) {
+                u64 uid = 1; // Default user ID
+                std::memcpy(out, &uid, 8);
+                *out_sz = 8;
+            }
+            return true;
+
+        // ── IApplicationFunctions commands ──
+        case 11:  // GetDisplayVersion  (IApplicationFunctions)
+            if (*out_sz >= 16) {
+                std::memset(out, 0, 16);
+                out[0] = 1; out[1] = 0; out[2] = 0; out[3] = 0; // version 1.0.0
+                *out_sz = 16;
+            }
+            return true;
+
+        // ── ILibraryAppletSelfAccessor commands ──
+        case 9:  // GetMainAppletIdentityInfo  (ILibraryAppletSelfAccessor)
             if (*out_sz >= 0x40) {
                 std::memset(out, 0, 0x40);
-                out[0] = 1;  // AppletID
+                out[0] = 2;  // AppletType = Application
                 out[4] = 0;  // ApplicationKind
                 *out_sz = 0x40;
             }
             return true;
 
-        case 160: // SetScreenShotPermission
-        case 170: // SetOperationModeChangedNotification
-        case 180: // SetPerformanceModeChangedNotification
-        case 200: // SetFocusHandlingMode
-        case 210: // SetOutOfFocusSuspendingEnabled
-        case 220: // SetAlbumImageOrientation
-        case 240: // SetDesiredKeyboardLayout
-        case 290: // SetVsyncInterruptionEvent
+        // ── ILibraryAppletAccessor commands ──
+        case 160: // GetIndirectLayerConsumerHandle  (ILibraryAppletAccessor)
+            if (*out_sz >= 8) {
+                u64 handle = 0x02000000;
+                std::memcpy(out, &handle, 8);
+                *out_sz = 8;
+            }
+            return true;
+
+        // ── Common applet lifecycle commands ──
+        case 26:  // RequestExitToSelf
+        case 7:   // ExitProcessAndReturn
+            LOG_DEBUG("AM: exit request");
             *out_sz = 0;
             return true;
 
         default:
             LOG_TRACE("AM: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };
@@ -110,7 +135,8 @@ public:
             return true;
         default:
             LOG_TRACE("NS: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 
@@ -155,7 +181,8 @@ public:
             return true;
         default:
             LOG_TRACE("LDR: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };

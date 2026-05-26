@@ -11,45 +11,12 @@
 class SmService : public ServiceBase {
 public:
     SmService() {
-        // Pre-register known services
+        // Only register SM itself here — don't pre-register other services.
+        // Each service registers itself via its static constructor (per .cpp file).
+        // Pre-registration with nullptr can overwrite valid pointers depending
+        // on static init order across translation units.
         IpcManager::Instance().RegisterService("sm:", this);
-        IpcManager::Instance().RegisterService("vi:", nullptr);  // lazy init
-        IpcManager::Instance().RegisterService("vi:m", nullptr);
-        IpcManager::Instance().RegisterService("nvdrv:", nullptr);
-        IpcManager::Instance().RegisterService("nvdrv#", nullptr);
-        IpcManager::Instance().RegisterService("hid:", nullptr);
-        IpcManager::Instance().RegisterService("set:", nullptr);
-        IpcManager::Instance().RegisterService("apm:", nullptr);
-        IpcManager::Instance().RegisterService("apm:sys", nullptr);
-        IpcManager::Instance().RegisterService("time:", nullptr);
-        IpcManager::Instance().RegisterService("time:a", nullptr);
-        IpcManager::Instance().RegisterService("fsp-srv:", nullptr);
-        IpcManager::Instance().RegisterService("fs:", nullptr);
-        IpcManager::Instance().RegisterService("set:", nullptr);
-        IpcManager::Instance().RegisterService("set:sys", nullptr);
-        IpcManager::Instance().RegisterService("appletOE:", nullptr);
-        IpcManager::Instance().RegisterService("appletAE:", nullptr);
-        IpcManager::Instance().RegisterService("applet", nullptr);
-        IpcManager::Instance().RegisterService("ns:", nullptr);
-        IpcManager::Instance().RegisterService("ns:dev", nullptr);
-        IpcManager::Instance().RegisterService("ns:am2", nullptr);
-        IpcManager::Instance().RegisterService("ldr:", nullptr);
-        IpcManager::Instance().RegisterService("ldr:pm", nullptr);
-        IpcManager::Instance().RegisterService("spl:", nullptr);
-        IpcManager::Instance().RegisterService("spl:mig", nullptr);
-        IpcManager::Instance().RegisterService("acc:u0", nullptr);
-        IpcManager::Instance().RegisterService("acc:u1", nullptr);
-        IpcManager::Instance().RegisterService("pcv:", nullptr);
-        IpcManager::Instance().RegisterService("psc:", nullptr);
-        IpcManager::Instance().RegisterService("pm:", nullptr);
-        IpcManager::Instance().RegisterService("nifm:", nullptr);
-        IpcManager::Instance().RegisterService("nifm:oa", nullptr);
-        IpcManager::Instance().RegisterService("ro:", nullptr);
-        IpcManager::Instance().RegisterService("erpt:", nullptr);
-        IpcManager::Instance().RegisterService("fatal:", nullptr);
-        IpcManager::Instance().RegisterService("btm:", nullptr);
-        IpcManager::Instance().RegisterService("nfc:", nullptr);
-
+        IpcManager::Instance().RegisterService("sm:m:", this);
     }
 
     const char* Name() const override { return "sm:"; }
@@ -83,16 +50,21 @@ private:
         // Null-terminate at first null
         name = name.c_str();
 
-        // Register service if it's known but not yet registered
-        if (name == "vi:")            EnsureService("vi:", ViInitialize);
-        else if (name == "vi:m")      EnsureService("vi:m", ViInitialize);
-        else if (name == "nvdrv:")    EnsureService("nvdrv:", NvInitialize);
-        else if (name == "fsp-srv:" || name == "fs:")
-                                      EnsureService("fsp-srv:", FsInitialize);
-        else if (name == "hid:")      EnsureService("hid:", HidInitialize);
-        else if (name == "set:")      EnsureService("set:", SetInitialize);
-        else if (name == "apm:")      EnsureService("apm:", ApmInitialize);
-        else if (name == "time:")     EnsureService("time:", TimeInitialize);
+        // Resolve service name to init function and call EnsureService
+        if (name == "vi:" || name == "vi:m")            EnsureService(name.c_str(), ViInitialize);
+        else if (name == "nvdrv:" || name == "nvdrv#")   EnsureService(name.c_str(), NvInitialize);
+        else if (name == "fsp-srv:" || name == "fs:")      EnsureService(name.c_str(), FsInitialize);
+        else if (name == "hid:")      EnsureService(name.c_str(), HidInitialize);
+        else if (name == "set:" || name == "set:sys") EnsureService(name.c_str(), SetInitialize);
+        else if (name == "apm:" || name == "apm:sys") EnsureService(name.c_str(), ApmInitialize);
+        else if (name == "time:" || name == "time:a") EnsureService(name.c_str(), TimeInitialize);
+        else if (name == "audout:" || name == "audren:") EnsureService(name.c_str(), AudioOutInitialize);
+        else if (name == "appletOE:" || name == "appletAE:" || name == "applet") EnsureService(name.c_str(), AmInitialize);
+        else if (name == "ns:" || name == "ns:dev" || name == "ns:am2") EnsureService(name.c_str(), NsInitialize);
+        else if (name == "ldr:" || name == "ldr:pm") EnsureService(name.c_str(), LdrInitialize);
+        else if (name == "spl:" || name == "spl:mig" || name == "spl:fs") EnsureService(name.c_str(), SplInitialize);
+        else if (name == "acc:u0" || name == "acc:u1" || name == "acc:su") EnsureService(name.c_str(), AccountInitialize);
+        else if (name == "pcv:")    EnsureService(name.c_str(), PcvInitialize);
 
         u32 session = IpcManager::Instance().Connect(name.c_str());
         LOG_INFO("SM: GetService('%s') → session 0x%x", name.c_str(), session);
@@ -113,14 +85,42 @@ private:
         return true;
     }
 
-    // Lazy-init known services
+    // Lazy-init known services — auto-initialize on first access.
+    // Each init function triggers the static constructor in the service's .cpp file.
     static void EnsureService(const char* name, void(*init)()) {
-        static bool vi_init = false, nv_init = false;
-        if (name == std::string("vi:") || name == std::string("vi:m")) {
-            if (!vi_init) { vi_init = true; init(); }
-        }
-        if (name == std::string("nvdrv:")) {
-            if (!nv_init) { nv_init = true; init(); }
+        static bool vi_init=false, nv_init=false, fs_init=false, hid_init=false;
+        static bool set_init=false, apm_init=false, time_init=false, audio_init=false;
+        static bool am_init=false, ns_init=false, ldr_init=false, spl_init=false;
+        static bool acc_init=false, pcv_init=false;
+
+        if (strcmp(name, "vi:") == 0 || strcmp(name, "vi:m") == 0) {
+            if (!vi_init) { vi_init = true; ViInitialize(); }
+        } else if (strcmp(name, "nvdrv:") == 0 || strcmp(name, "nvdrv#") == 0) {
+            if (!nv_init) { nv_init = true; NvInitialize(); }
+        } else if (strcmp(name, "fsp-srv:") == 0 || strcmp(name, "fs:") == 0) {
+            if (!fs_init) { fs_init = true; FsInitialize(); }
+        } else if (strcmp(name, "hid:") == 0) {
+            if (!hid_init) { hid_init = true; HidInitialize(); }
+        } else if (strcmp(name, "set:") == 0 || strcmp(name, "set:sys") == 0) {
+            if (!set_init) { set_init = true; SetInitialize(); }
+        } else if (strcmp(name, "apm:") == 0 || strcmp(name, "apm:sys") == 0) {
+            if (!apm_init) { apm_init = true; ApmInitialize(); }
+        } else if (strcmp(name, "time:") == 0 || strcmp(name, "time:a") == 0) {
+            if (!time_init) { time_init = true; TimeInitialize(); }
+        } else if (strcmp(name, "audout:") == 0 || strcmp(name, "audren:") == 0) {
+            if (!audio_init) { audio_init = true; AudioOutInitialize(); }
+        } else if (strcmp(name, "appletOE:") == 0 || strcmp(name, "appletAE:") == 0 || strcmp(name, "applet") == 0) {
+            if (!am_init) { am_init = true; AmInitialize(); }
+        } else if (strcmp(name, "ns:") == 0 || strcmp(name, "ns:dev") == 0 || strcmp(name, "ns:am2") == 0) {
+            if (!ns_init) { ns_init = true; NsInitialize(); }
+        } else if (strcmp(name, "ldr:") == 0 || strcmp(name, "ldr:pm") == 0) {
+            if (!ldr_init) { ldr_init = true; LdrInitialize(); }
+        } else if (strcmp(name, "spl:") == 0 || strcmp(name, "spl:mig") == 0 || strcmp(name, "spl:fs") == 0) {
+            if (!spl_init) { spl_init = true; SplInitialize(); }
+        } else if (strcmp(name, "acc:u0") == 0 || strcmp(name, "acc:u1") == 0 || strcmp(name, "acc:su") == 0) {
+            if (!acc_init) { acc_init = true; AccountInitialize(); }
+        } else if (strcmp(name, "pcv:") == 0) {
+            if (!pcv_init) { pcv_init = true; PcvInitialize(); }
         }
     }
 
@@ -137,14 +137,7 @@ private:
     static void SplInitialize();
     static void AccountInitialize();
     static void PcvInitialize();
-    static void PscInitialize();
-    static void PmInitialize();
-    static void NifmInitialize();
-    static void RoInitialize();
-    static void ErptInitialize();
-    static void FatalInitialize();
-    static void BtmInitialize();
-    static void NfcInitialize();
+    static void AudioOutInitialize();
 };
 
 // ── Forward declarations (defined in Vi.cpp / Nv.cpp) ──────
@@ -161,14 +154,7 @@ void SmService::LdrInitialize()  { extern void ServiceLdr_Init();  ServiceLdr_In
 void SmService::SplInitialize()  { extern void ServiceSpl_Init();  ServiceSpl_Init(); }
 void SmService::AccountInitialize(){extern void ServiceAccount_Init();ServiceAccount_Init();}
 void SmService::PcvInitialize()  { extern void ServicePcv_Init();  ServicePcv_Init(); }
-void SmService::PscInitialize()  { extern void ServicePsc_Init();  ServicePsc_Init(); }
-void SmService::PmInitialize()   { extern void ServicePm_Init();   ServicePm_Init(); }
-void SmService::NifmInitialize() { extern void ServiceNifm_Init(); ServiceNifm_Init(); }
-void SmService::RoInitialize()   { extern void ServiceRo_Init();   ServiceRo_Init(); }
-void SmService::ErptInitialize() { extern void ServiceErpt_Init(); ServiceErpt_Init(); }
-void SmService::FatalInitialize(){ extern void ServiceFatal_Init();ServiceFatal_Init(); }
-void SmService::BtmInitialize()  { extern void ServiceBtm_Init();  ServiceBtm_Init(); }
-void SmService::NfcInitialize()  { extern void ServiceNfc_Init();  ServiceNfc_Init(); }
+void SmService::AudioOutInitialize() { extern void ServiceAudioOut_Init(); ServiceAudioOut_Init(); }
 
 // ── Global registration ─────────────────────────────────────
 static SmService g_sm_service;

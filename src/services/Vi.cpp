@@ -27,6 +27,9 @@ public:
         if (g_vi_memory) {
             g_vi_memory->MapPhysical(FB_ADDR, FB_SIZE,
                                       Memory::Permission::RW);
+            // Write a dark gray marker pixel so EmuScreenView detects framebuffer as active
+            u32 marker = 0xFF202020; // dark gray (RGBA)
+            g_vi_memory->Write(FB_ADDR, marker);
             LOG_INFO("VI: framebuffer at 0x%llx (%u KB)", FB_ADDR, FB_SIZE/1024);
         }
     }
@@ -46,7 +49,8 @@ public:
             return HandleSetLayer(in, in_sz, out, out_sz);
         default:
             LOG_TRACE("VI: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 

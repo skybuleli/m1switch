@@ -1,5 +1,6 @@
 #include "services/Ipc.h"
 #include "common/Log.h"
+#include "loader/RomFs.h"
 #include <cstring>
 #include <vector>
 #include <string>
@@ -59,10 +60,16 @@ private:
 static FileTable g_file_table;
 
 // ── RomFS data (set by loader) ──────────────────────────────
-static std::vector<u8> g_romfs_data;
-void FsService_SetRomFS(std::span<const u8> data) {
-    g_romfs_data.assign(data.begin(), data.end());
-    LOG_INFO("FS: RomFS set (%zu bytes)", g_romfs_data.size());
+static RomFs g_romfs;
+static bool g_romfs_loaded = false;
+static std::vector<u8> g_romfs_raw_data; // raw blob for direct sequential reads
+extern "C" void FsService_SetRomFS(std::span<const u8> data) {
+    g_romfs_raw_data.assign(data.begin(), data.end());
+    if (g_romfs.Parse(data)) {
+        g_romfs_loaded = true;
+        LOG_INFO("FS: RomFS parsed (%zu dirs, %zu files, %zu raw bytes)",
+                 g_romfs.GetDirCount(), g_romfs.GetFileCount(), g_romfs_raw_data.size());
+    }
 }
 
 // ── FS service implementation ───────────────────────────────
@@ -117,19 +124,30 @@ public:
 
         default:
             LOG_WARN("FS: unhandled cmd 0x%08x", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 
 private:
-    // OpenRomFS → returns a handle to the RomFS file
+    // Read a string from IPC input at offset (null-terminated, pascal-style)
+    static std::string ReadPath(const u8* in, size_t in_sz, size_t off) {
+        if (off + 4 > in_sz) return "";
+        u32 len = (u32)in[off] | ((u32)in[off+1]<<8) | ((u32)in[off+2]<<16) | ((u32)in[off+3]<<24);
+        if (len == 0 || off + 4 + len > in_sz) return "";
+        return std::string(reinterpret_cast<const char*>(in + off + 4), len);
+    }
+
+    // OpenRomFS → returns a handle to the raw RomFS blob for direct reading
     bool HandleOpenRomFS(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
-        if (g_romfs_data.empty()) {
+        if (!g_romfs_loaded) {
             LOG_WARN("FS: OpenRomFS but no RomFS loaded");
-            return false;
+            *out_sz = 0;
+            return true;
         }
-        u32 fd = g_file_table.Open("romfs", g_romfs_data, false);
-        LOG_INFO("FS: OpenRomFS → fd=0x%x (%zu bytes)", fd, g_romfs_data.size());
+        // Return BOTH: a raw handle for sequential reads AND a path-based handle
+        u32 fd = g_file_table.Open("romfs://", g_romfs_raw_data, false);
+        LOG_INFO("FS: OpenRomFS → fd=0x%x (%zu bytes raw)", fd, g_romfs_raw_data.size());
         if (*out_sz >= 8) {
             out[0]=fd&0xFF; out[1]=(fd>>8)&0xFF; out[2]=(fd>>16)&0xFF; out[3]=(fd>>24)&0xFF;
             std::memset(out+4, 0, 4);
@@ -138,11 +156,33 @@ private:
         return true;
     }
 
-    // OpenFile → returns a file handle
+    // OpenFile by path — resolves against RomFS
+    // IPC format: paths arrive via buffer descriptors (type 0x22).
+    // The exact offset depends on the IPC request layout.
+    // We try a few common path locations as a best-effort approach.
     bool HandleOpenFile(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
-        LOG_DEBUG("FS: OpenFile");
+        // Try reading path from common IPC offsets
+        std::string path = ReadPath(in, in_sz, 8);
+        if (path.empty()) path = ReadPath(in, in_sz, 0);
+
+        LOG_DEBUG("FS: OpenFile '%s' (in_sz=%zu)", path.c_str(), in_sz);
+
+        if (!g_romfs_loaded || path.empty() || !g_romfs.Exists(path)) {
+            LOG_WARN("FS: OpenFile '%s' NOT FOUND in RomFS", path.c_str());
+            *out_sz = 0;
+            return true;
+        }
+
+        std::vector<u8> file_data;
+        if (!g_romfs.ReadFile(path, file_data)) {
+            LOG_WARN("FS: OpenFile '%s' read failed", path.c_str());
+            *out_sz = 0;
+            return true;
+        }
+
+        u32 fd = g_file_table.Open(path, file_data, false);
+        LOG_INFO("FS: OpenFile '%s' → fd=0x%x (%zu bytes)", path.c_str(), fd, file_data.size());
         if (*out_sz >= 8) {
-            u32 fd = g_file_table.Open("unknown", {}, false);
             out[0]=fd&0xFF; out[1]=(fd>>8)&0xFF;
             out[2]=(fd>>16)&0xFF; out[3]=(fd>>24)&0xFF;
             std::memset(out+4, 0, 4);

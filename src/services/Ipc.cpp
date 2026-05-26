@@ -58,16 +58,18 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     memset(resp, 0, sizeof(IpcResponse));
     resp->magic = 0x4942434F;  // "OCBI" in LE
     resp->result = 0;
+
+    // Save total buffer size before overwriting
+    size_t total_buf_size = *resp_size;
     *resp_size = sizeof(IpcResponse);
 
     if (session->service) {
-        size_t out_sz = 0;
         // Raw data is after the header
         const u8* raw_in = data + sizeof(IpcRequest);
         size_t raw_in_size = (size > sizeof(IpcRequest)) ? size - sizeof(IpcRequest) : 0;
         u8* raw_out = response + sizeof(IpcResponse);
-        size_t raw_out_max = (resp_size && *resp_size > sizeof(IpcResponse))
-                            ? *resp_size - sizeof(IpcResponse) : 0;
+        size_t raw_out_max = (total_buf_size > sizeof(IpcResponse))
+                            ? total_buf_size - sizeof(IpcResponse) : 0;
 
         bool handled = session->service->HandleCommand(
             req->cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);

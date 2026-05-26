@@ -20,23 +20,38 @@ public:
         case 0: // Initialize
             *out_sz = 0; return true;
         case 1: // GetAvailableLanguageCodes
-            if (*out_sz >= 8) {
-                // Return 1 language (English = 1)
-                out[0] = 1; out[1] = 0; out[2] = 0; out[3] = 0;
-                out[4] = 1; out[5] = 0; out[6] = 0; out[7] = 0;
-                *out_sz = 8;
+            if (*out_sz >= 16) {
+                std::memset(out, 0, 16);
+                out[0] = 1; out[4] = 1;  // 1 language: en-US
+                out[8] = 0; out[9] = 0;  // en-US = 0
+                out[10] = 0; out[11] = 0;
+                *out_sz = 16;
             }
             return true;
         case 2: // MakeLanguageCode
             if (*out_sz >= 8) {
-                out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 0;
-                out[4] = 0; out[5] = 0; out[6] = 0; out[7] = 0;
+                std::memset(out, 0, 8);
                 *out_sz = 8;
+            }
+            return true;
+        case 3: // GetLanguageCode
+            if (*out_sz >= 8) {
+                u64 lang = 0; // en-US = 0
+                std::memcpy(out, &lang, 8);
+                *out_sz = 8;
+            }
+            return true;
+        case 4: // GetRegionCode
+            if (*out_sz >= 4) {
+                u32 region = 1; // USA region
+                std::memcpy(out, &region, 4);
+                *out_sz = 4;
             }
             return true;
         default:
             LOG_TRACE("SET: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };
@@ -60,7 +75,8 @@ public:
             *out_sz = 0; return true;
         default:
             LOG_TRACE("APM: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };
@@ -90,7 +106,8 @@ public:
             return true;
         default:
             LOG_TRACE("TIME: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };

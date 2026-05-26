@@ -36,6 +36,14 @@ public:
             }
             return true;
 
+        case 100: // TrySelectUserWithoutInteraction
+            if (*out_sz >= 8) {
+                u64 uid = 1; // default user ID
+                std::memcpy(out, &uid, 8);
+                *out_sz = 8;
+            }
+            return true;
+
         case 3: // ListAllUsers
             if (*out_sz >= 0x10) {
                 std::memset(out, 0, 0x10);
@@ -48,7 +56,6 @@ public:
         case 4: // GetProfileUrl
         case 5: // GetProfile
         case 6: // GetUserData
-        case 100: // StoreSaveDataId
         case 101: // DeleteSaveDataId
         case 140: // GetSaveDataOwnerId
             if (*out_sz >= 8) { std::memset(out, 0, 8); *out_sz = 8; }
@@ -56,7 +63,8 @@ public:
 
         default:
             LOG_TRACE("Account: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 };

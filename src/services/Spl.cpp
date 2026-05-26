@@ -57,7 +57,8 @@ public:
 
         default:
             LOG_TRACE("SPL: unhandled cmd %u", cmd_id);
-            return false;
+            *out_sz = 0;
+            return true;
         }
     }
 
