@@ -37,6 +37,10 @@ extern void ServiceTime_Init();
 extern void ServiceAudioOut_Init();
 extern void ServicePcv_Init();
 
+// 服务内存设置函数（在核心初始化后设置内存指针，服务懒加载时使用）
+extern void ServiceVi_SetMemory(class Memory* mem);
+extern void ServiceHid_SetMemory(class Memory* mem);
+
 #include <cstdio>
 #include <cstring>
 #include <chrono>
@@ -178,6 +182,13 @@ int main(int argc, char** argv) {
     SvcTable_Init();
 
     // 初始化所有系统服务（显式调用确保静态库中的服务对象被链接）
+    // 注意: 需要在 ServiceVi_Init / ServiceNv_Init 之前先设置内存指针，
+    //       因为这些服务的静态构造函数在 main() 之前运行（g_vi_memory 为 null），
+    //       惰性初始化 (ServiceXxx_Init) 时依赖于已设置的内存指针。
+    ServiceVi_SetMemory(&memory);
+    ServiceHid_SetMemory(&memory);
+    ServiceNv_SetMemory(&memory);
+    ServiceNv_SetTracker(&tracker);
     LOG_INFO("Initializing system services...");
     ServiceSm_Init();
     ServiceSpl_Init();

@@ -141,6 +141,7 @@ public:
     TimeService() {
         IpcManager::Instance().RegisterService("time:", this);
         IpcManager::Instance().RegisterService("time:a", this);
+        IpcManager::Instance().RegisterService("time:u", this);
     }
     const char* Name() const override { return "time:"; }
 

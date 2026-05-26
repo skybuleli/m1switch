@@ -64,7 +64,7 @@ private:
         else if (name == "hid:")      EnsureService(name.c_str(), HidInitialize);
         else if (name == "set:" || name == "set:sys") EnsureService(name.c_str(), SetInitialize);
         else if (name == "apm:" || name == "apm:sys") EnsureService(name.c_str(), ApmInitialize);
-        else if (name == "time:" || name == "time:a") EnsureService(name.c_str(), TimeInitialize);
+        else if (name == "time:" || name == "time:a" || name == "time:u") EnsureService(name.c_str(), TimeInitialize);
         else if (name == "audout:" || name == "audren:") EnsureService(name.c_str(), AudioOutInitialize);
         else if (name == "appletOE:" || name == "appletAE:" || name == "applet") EnsureService(name.c_str(), AmInitialize);
         else if (name == "ns:" || name == "ns:dev" || name == "ns:am2") EnsureService(name.c_str(), NsInitialize);
@@ -113,7 +113,7 @@ private:
             if (!set_init) { set_init = true; SetInitialize(); }
         } else if (strcmp(name, "apm:") == 0 || strcmp(name, "apm:sys") == 0) {
             if (!apm_init) { apm_init = true; ApmInitialize(); }
-        } else if (strcmp(name, "time:") == 0 || strcmp(name, "time:a") == 0) {
+        } else if (strcmp(name, "time:") == 0 || strcmp(name, "time:a") == 0 || strcmp(name, "time:u") == 0) {
             if (!time_init) { time_init = true; TimeInitialize(); }
         } else if (strcmp(name, "audout:") == 0 || strcmp(name, "audren:") == 0) {
             if (!audio_init) { audio_init = true; AudioOutInitialize(); }
