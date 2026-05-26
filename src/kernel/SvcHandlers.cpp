@@ -1094,6 +1094,8 @@ void SvcHandlers_RegisterAll() {
     SvcTable_Register(0x4A, SvcReadWriteRegister);
     SvcTable_Register(0x4B, SvcSetProcessActivity);
     SvcTable_Register(0x4C, SvcCreateSharedMemory);
+    SvcTable_Register(0x4D, SvcMapSharedMemory);
+    SvcTable_Register(0x4E, SvcUnmapSharedMemory);
 
     LOG_INFO("Registered 80 SVC handlers");
 }
