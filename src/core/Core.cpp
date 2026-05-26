@@ -142,15 +142,14 @@ Result EmulatorCore::LoadGame(const std::string& path) {
 
     NroLoader loader(memory_);
     Result r = Result::Success;
-    @try {
+    try {
         r = loader.LoadFromFile(path, load_info_);
-    } @catch (NSException* e) {
-        LOG_ERROR("NRO load exception: %s reason: %s",
-                  [[e name] UTF8String], [[e reason] UTF8String]);
-        return Result::CpuUnknown;
-    } @catch (...) {
+    } catch (std::exception& e) {
+        LOG_ERROR("NRO load exception: %s", e.what());
+        return Result::FsInvalidNCA;
+    } catch (...) {
         LOG_ERROR("NRO load unknown exception");
-        return Result::CpuUnknown;
+        return Result::FsInvalidNCA;
     }
     if (Failed(r)) {
         LOG_ERROR("Failed to load game: %d", (int)r);
