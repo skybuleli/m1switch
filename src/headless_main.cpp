@@ -10,6 +10,9 @@
 #include "cpu/NativeExec.h"
 #include "cpu/ExceptionHandler.h"
 #include "kernel/SvcTable.h"
+#include "debug/TraceEngine.h"
+#include "debug/DebugServer.h"
+#include "debug/SnapshotManager.h"
 
 // TLS layout (mirrors constants in core/Core.h)
 static constexpr u64 TLS_SLOTS_BASE   = 0xFD000000;
@@ -104,6 +107,20 @@ int main(int argc, char** argv) {
         SvcHandler_Dispatch(svc, st);
     });
     g_sig_handler.Install();
+
+    // ── 7.5 初始化调试框架 ──────────────────────────────
+    TraceEngine::Instance().EnableChannel(TraceChannel::SVC, true);
+    TraceEngine::Instance().EnableChannel(TraceChannel::IPC, true);
+    TraceEngine::Instance().EnableChannel(TraceChannel::THREAD, true);
+
+    std::string trace_path = std::string(path) + ".trace";
+    TraceEngine::Instance().SetOutputFile(trace_path);
+    TraceEngine::Instance().EnableFileOutput(true);
+
+    LOG_INFO("TraceEngine: SVC/IPC/THREAD 通道已启用, 输出到 %s", trace_path.c_str());
+
+    DebugServer::Instance().Start();
+
     LOG_INFO("Starting guest...\n");
 
     // ── 8. Run guest ─────────────────────────────────
@@ -134,6 +151,52 @@ int main(int argc, char** argv) {
     } else {
         LOG_INFO("GUEST TIMEOUT\n");
     }
+
+    // ── 10. 输出 trace 统计 ─────────────────────────────
+    auto stats = TraceEngine::Instance().GetStats();
+    LOG_INFO("=== Trace Stats ===\n");
+    LOG_INFO("Total events: %llu\n", (unsigned long long)stats.total_events);
+    LOG_INFO("Dropped events: %llu\n", (unsigned long long)stats.dropped_events);
+    for (size_t i = 0; i < (size_t)TraceChannel::COUNT; i++) {
+        LOG_INFO("  %s: %llu events\n", TraceChannelNames[i],
+                 (unsigned long long)stats.events_per_channel[i]);
+    }
+
+    // ── 11. 输出最近 SVC/IPC trace ──────────────────────
+    auto svc_events = TraceEngine::Instance().Query(TraceChannel::SVC, 0, UINT64_MAX, 20);
+    if (!svc_events.empty()) {
+        LOG_INFO("=== Recent SVC calls ===\n");
+        for (const auto& evt : svc_events) {
+            bool is_return = (evt.event_id & 0x8000) != 0;
+            u32 svc_num = evt.event_id & 0x7FFF;
+            if (is_return) {
+                LOG_INFO("  SVC #0x%02x RETURN: x0_before=0x%llx result=0x%llx\n",
+                         svc_num, (unsigned long long)evt.args[0], (unsigned long long)evt.result);
+            } else {
+                LOG_INFO("  SVC #0x%02x CALL: x0=0x%llx x1=0x%llx\n",
+                         svc_num, (unsigned long long)evt.args[0], (unsigned long long)evt.args[1]);
+            }
+        }
+    }
+
+    auto ipc_events = TraceEngine::Instance().Query(TraceChannel::IPC, 0, UINT64_MAX, 20);
+    if (!ipc_events.empty()) {
+        LOG_INFO("=== Recent IPC calls ===\n");
+        for (const auto& evt : ipc_events) {
+            bool is_return = (evt.event_id & 0x8000) != 0;
+            u32 cmd_id = evt.event_id & 0x7FFF;
+            if (is_return) {
+                LOG_INFO("  IPC cmd=%u RESP: session=0x%llx result=0x%llx\n",
+                         cmd_id, (unsigned long long)evt.args[0], (unsigned long long)evt.result);
+            } else {
+                LOG_INFO("  IPC cmd=%u REQ: session=0x%llx arg=0x%llx\n",
+                         cmd_id, (unsigned long long)evt.args[0], (unsigned long long)evt.args[1]);
+            }
+        }
+    }
+
+    TraceEngine::Instance().Flush();
+    DebugServer::Instance().Stop();
 
     return 0;
 }
