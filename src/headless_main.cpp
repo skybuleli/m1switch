@@ -255,18 +255,22 @@ int main(int argc, char** argv) {
                 }
             }
 
-            // ── 5) 刷新指令缓存 ────────────────────
-            // 写入可执行内存后必须在 ARM64 上清指令缓存
-            // 将文本段临时改为 RW 写入后恢复 RX，并刷新 icache
-            mach_vm_address_t t_start = (mach_vm_address_t)memory.Pointer(BASE + 0x440000);
-            mach_vm_address_t t_end   = (mach_vm_address_t)memory.Pointer(BASE + 0x460000);
-            if (t_start && t_end) {
-                mach_vm_protect(mach_task_self(), t_start, t_end - t_start, 0,
-                                VM_PROT_READ | VM_PROT_WRITE);
-                __builtin___clear_cache((char*)t_start, (char*)t_end);
-                mach_vm_protect(mach_task_self(), t_start, t_end - t_start, 0,
-                                VM_PROT_READ | VM_PROT_EXECUTE);
-                LOG_INFO("PATCH: icache invalidated + prot restored");
+            // ── 5) 双写 + 刷新指令缓存 ──────────────
+            // 文本段在 0x40000000 和 0x300000000+0x40000000 两处映射，都写入
+            u64 base_t[2] = {0x40000000, memory.BaseAddress() + 0x40000000};
+            for (int bi = 0; bi < 2; bi++) {
+                memory.Write<u32>(base_t[bi] + 0x4bb28, 0x52800000);
+                u64 bpc = base_t[bi] + 0x4b5ac;
+                s64 boff = (s64)((bss_addr + bss_sz + 16) - bpc);
+                if (boff % 4 == 0)
+                    memory.Write<u32>(bpc, 0x14000000 | (((u32)(boff / 4)) & 0x3FFFFFF));
+            }
+            // 直接从 base_ 算 host 地址刷新 icache
+            u8* hp = (u8*)memory.BasePointer();
+            if (hp) {
+                char* cp = (char*)(hp + 0x440000);
+                __builtin___clear_cache(cp, cp + 0x20000);
+                LOG_INFO("PATCH: icache flushed");
             }
         }
     }
