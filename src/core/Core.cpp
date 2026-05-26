@@ -91,11 +91,21 @@ Result EmulatorCore::LoadGame(const std::string& path) {
     // Loader_LoadExecutable handles NSO0 direct, NSP, and XCI formats.
     // It parses the package, finds the Program NCA, extracts ExeFS,
     // locates the "main" NSO, decompresses segments, and maps them.
-    extern bool Loader_LoadExecutable(const std::string& path, Memory& memory,
-                                       struct NsoLoadInfo& info);
-
+    // 先检查魔数，NRO 格式直接跳过 Loader_LoadExecutable（该函数在 GUI 后台线程可能崩溃）
     NsoLoadInfo nso_info;
-    bool loaded_nso = Loader_LoadExecutable(path, memory_, nso_info);
+    bool loaded_nso = false;
+    {
+        std::ifstream magic_check(path, std::ios::binary);
+        if (magic_check.is_open()) {
+            u32 probe = 0;
+            magic_check.read(reinterpret_cast<char*>(&probe), 4);
+            if (probe != 0x304F524E) { // 非 NRO0
+                extern bool Loader_LoadExecutable(const std::string& path, Memory& memory,
+                                                   struct NsoLoadInfo& info);
+                loaded_nso = Loader_LoadExecutable(path, memory_, nso_info);
+            }
+        }
+    }
 
     if (loaded_nso) {
         LOG_INFO("EmulatorCore: NSO loaded, entry=0x%llx, %zu segments",
