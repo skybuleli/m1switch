@@ -295,16 +295,14 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     u32 num_copy_handles = 0;
     u32 num_move_handles = 0;
 
+    // 保存服务名（session 指针可能在 CreateSession 后被失效）
+    std::string svc_name = session->service_name;
+    const char* svc_name_cstr = svc_name.c_str();
+
     // 标记需要从服务输出中提取 move handle 的情形
-    // SM::GetService, APM::OpenSession 等需返回子会话句柄的服务命令
     bool needs_move_handle = false;
-    auto svcName = [&]() -> std::string {
-        // 兼容带冒号和不带冒号的服务名
-        auto n = session->service_name;
-        if (n.back() == ':') return n.substr(0, n.size()-1);
-        return n;
-    };
-    std::string sname = svcName();
+    std::string sname = svc_name;
+    if (sname.back() == ':') sname.pop_back();
     if (sname == "sm" && cmd_id == 1) {
         needs_move_handle = true;
     } else if ((sname == "apm" || sname == "apm:sys") && cmd_id == 0) {
@@ -349,8 +347,50 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // ── IPC 追踪：请求 ────────────────────────────────────
     TRACE_IPC(cmd_id, (u64)session_handle, raw_in_size > 0 ? *((const u64*)raw_in) : 0, 0);
 
-    // ── 调用服务 ─────────────────────────────────────────
-    bool handled = session->service->HandleCommand(cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
+    // ── 处理 Control 命令（type=5）────────────────────
+    // Control 命令由 IPC 层直接处理，不转发给服务
+    bool handled = false;
+    bool is_control = (req_hdr.type == 5);
+    
+    if (is_control) {
+        if (cmd_id == 0) {
+            // ConvertCurrentObjectToDomain
+            // libnx 在 domain conversion 成功后期望发送 domain 格式请求
+            // 但我们的 IPC 层还不支持 domain 格式，因此返回 NotFound
+            // 这将使 libnx 回退到非 domain 路径
+            LOG_DEBUG("IPC: ConvertCurrentObjectToDomain(skip) for session 0x%x", session_handle);
+            // 返回成功但不出 domain_id → libnx 不认为已转换
+            // 或者返回错误让 libnx 跳过 domain
+            raw_out_max = 0;
+            handled = true;
+        } else if (cmd_id == 3) {
+            // QueryPointerBufferSize — 返回 u16=0（无指针缓冲需求）
+            if (raw_out_max >= 2) {
+                u16 buf_size = 0;
+                std::memcpy(raw_out, &buf_size, sizeof(buf_size));
+                raw_out_max = 2;
+            } else {
+                raw_out_max = 0;
+            }
+            handled = true;
+        } else {
+            LOG_TRACE("IPC: unhandled control cmd %u for session 0x%x", cmd_id, session_handle);
+            handled = true;
+            raw_out_max = 0;
+        }
+    } else {
+        // ── 普通 Request 命令 → 转发给服务 ─────────────────
+        if (session->service) {
+            handled = session->service->HandleCommand(cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
+        } else {
+            LOG_WARN("IPC: no service handler for session 0x%x ('%s')", session_handle, session->service_name.c_str());
+            raw_out_max = 0;
+            handled = true;
+        }
+    }
+
+    LOG_DEBUG("IPC: handled=%d is_control=%d cmd=%u for session 0x%x service=%s", 
+              handled, is_control, cmd_id, session_handle, svc_name_cstr);
 
     // 后处理：从 raw_out 提取 move handle（服务将句柄写入 raw_out[0..3]）
     if (handled && handle_pos && raw_out_max >= 4) {
@@ -358,7 +398,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         std::memcpy(&move_handle, raw_out, sizeof(move_handle));
         if (move_handle >= 0x1000 && move_handle < 0x10000) { // 验证是有效 session 句柄
             LOG_DEBUG("IPC: move handle 0x%x for '%s' cmd=%u",
-                      move_handle, session->service_name.c_str(), cmd_id);
+                      move_handle, svc_name_cstr, cmd_id);
             std::memcpy(handle_pos, &move_handle, sizeof(move_handle));
             raw_out_max = 0; // handle 已提取到头部，清除数据
         }
@@ -391,22 +431,23 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         }
 
         // ── 构建 CMIF 响应 ──────────────────────────────
-        // 在 raw_out 的基础上做 16 字节对齐，插入 CmifOutHeader
-        size_t raw_off = (size_t)(raw_out - response);  // data_words 在 response 中的偏移
-        size_t cmif_out_off = CalcCmifAlign(raw_off);   // 16 字节对齐后的偏移
+        // Control 命令(type=5): CmifOutHeader 在 data_words 开始处（无对齐）
+        // Request 命令(type=4): CmifOutHeader 在 16 字节对齐处
+        size_t raw_off = (size_t)(raw_out - response);
+        size_t cmif_out_off = is_control ? raw_off : CalcCmifAlign(raw_off);
         
-        // 如果对齐产生间隙，需要填充零
-        // 将服务输出数据移到 CmifOutHeader 之后
         // cmif_out_off 处放 CmifOutHeader (16 bytes)
         // cmif_out_off + 16 处放 service 数据
-        
-        size_t cmif_out_end = cmif_out_off + sizeof(CmifOutHeader); // SFCO+version+result+token
+        size_t cmif_out_end = cmif_out_off + sizeof(CmifOutHeader);
         size_t total_data_end = cmif_out_end + raw_out_max;
         
-        // 如果 service 有输出数据，将其后移到 CmifOutHeader 之后
+        // 将 service 输出数据后移到 CmifOutHeader 之后
         if (raw_out_max > 0 && cmif_out_end > raw_off) {
+            // 对于 Control 命令，raw_off==cmif_out_off，需要整体后移
             memmove(response + cmif_out_end, response + raw_off, raw_out_max);
         }
+        // 对于 Control 命令：raw_out 已经在 cmif_out_off 处，如果raw_off == cmif_out_off
+        // 且 raw_out_max==0，无需移动
         
         // 写入 CmifOutHeader（回填请求中的 token）
         CmifOutHeader cmif_out = {};
