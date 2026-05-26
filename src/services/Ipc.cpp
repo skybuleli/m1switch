@@ -119,6 +119,18 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         std::memcpy(&cmd_id, data + dw_off, sizeof(cmd_id));
     }
 
+    // 调试：输出 IPC 请求 full hex（32 bytes）
+    LOG_DEBUG("IPC REQ session=0x%x cmd=%u hex=%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x",
+              session_handle, cmd_id,
+              data[0],data[1],data[2],data[3],
+              data[4],data[5],data[6],data[7],
+              data[8],data[9],data[10],data[11],
+              data[12],data[13],data[14],data[15],
+              data[16],data[17],data[18],data[19],
+              data[20],data[21],data[22],data[23],
+              data[24],data[25],data[26],data[27],
+              data[28],data[29],data[30],data[31]);
+
     // raw_in = data_words 之后的数据（如果有多个 data_words 或 buffer 数据）
     const u8* raw_in = data + dw_off + (req_hdr.num_data_words * sizeof(u32));
     size_t raw_in_size = (raw_in > data && raw_in < data + size) ? (data + size) - raw_in : 0;
@@ -144,9 +156,9 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     u32 num_copy_handles = 0;
     u32 num_move_handles = 0;
 
-    // 对于 SM::Initialize (cmd_id=0)，libnx 期望 1 个输出句柄
-    // 更通用的方案：支持在 raw_out 前面写入句柄
-    if (session && session->service_name == "sm:" && cmd_id == 0) {
+    // 对于 SM::Initialize (cmd_id=0)，libnx 期望输出句柄
+    // 但由于句柄值需要有效内核对象支持，暂时不返回句柄，仅返回 data_words
+    if (false && session && session->service_name == "sm:" && cmd_id == 0) {
         if (resp_remaining >= 4 + 4) { // SpecialHeader + 1 handle
             shdr_pos = resp_ptr;
             handle_pos = resp_ptr + 4; // after special header
@@ -202,6 +214,14 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
 
     // 写入 HipcHeader
     std::memcpy(response, &resp_hdr, sizeof(HipcHeader));
+
+    // 调试：输出 IPC 响应 hex dump
+    LOG_DEBUG("IPC RESP cmd=%u session=0x%x sz=%zu hex=%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x",
+              cmd_id, session_handle, *resp_size,
+              response[0],response[1],response[2],response[3],
+              response[4],response[5],response[6],response[7],
+              response[8],response[9],response[10],response[11],
+              response[12],response[13],response[14],response[15]);
 
     // ── IPC 追踪：响应 ────────────────────────────────────
     TRACE_IPC(cmd_id | 0x8000, (u64)session_handle, (u64)handled, 0);
