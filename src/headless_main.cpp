@@ -234,6 +234,12 @@ int main(int argc, char** argv) {
     {
         const u64 BASE = memory.BaseAddress() + 0x40000000;
         if (info.segments.size() >= 3 && info.segments[0].size > 0x45655c) {
+            // 临时将 .text 设为 RW (NRO 加载器已保护为 RX)
+            u64 text_page_start = 0x40000000;
+            u64 text_page_sz = ((info.segments[0].size + 0x3FFF) & ~0x3FFF);
+            memory.Protect(text_page_start, text_page_sz, Memory::Permission::RW);
+            LOG_INFO("PATCH: .text temporarily set to RW for patching");
+
             u64 data_addr = info.segments[2].guest_address;
             u64 bss_addr  = info.bss_address;
             u64 bss_sz    = info.bss_size;
@@ -280,10 +286,15 @@ int main(int argc, char** argv) {
             }
             u8* hp = (u8*)memory.BasePointer();
             if (hp) {
-                char* cp = (char*)(hp + 0x440000);
+                // 刷新 .text 段 (NRO_TEXT_BASE=0x40000000) 的 icache
+                // 补丁覆盖 0x44b000-0x44c000 和 0x456000-0x456600 区域
+                char* cp = (char*)(hp + 0x40000000 + 0x440000);
                 __builtin___clear_cache(cp, cp + 0x20000);
-                LOG_INFO("PATCH: icache flushed");
+                LOG_INFO("PATCH: icache flushed at .text+0x440000");
             }
+            // 恢复 .text 为 RX
+            memory.Protect(text_page_start, text_page_sz, Memory::Permission::RX);
+            LOG_INFO("PATCH: .text restored to RX");
         }
     }
 
