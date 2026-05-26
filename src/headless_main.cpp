@@ -206,24 +206,68 @@ int main(int argc, char** argv) {
     u32 main_handle = KernelHandleTable().Create(main_thread);
     LOG_INFO("Main thread handle=0x%x", main_handle);
 
-    // ── 5a. 修正 libnx 全局指针 ─────────────────────
-    // init 函数 0x44b5b0 检查 .data+0x7BD0 处指针非空且第一 word == 8
-    // libnx 的 setsysGetFirmwareVersion 成功时应设置此指针，但响应格式不完整导致
+    // ── 5a. 修正 libnx 全局指针 + 绕过 applet 失败路径 ──
     {
-        u64 base_addr = memory.BaseAddress();
-        // .data 段: 第三个 segment (index 2)
+        // NRO 文本段在 guest 绝对地址 0x340000000
+        // segment 地址是 NRO_TEXT_BASE(0x40000000) 相对的
+        // Memory::Write 使用绝对地址: memory.BaseAddress() + NRO_TEXT_BASE + nro_off
+        const u64 BASE = memory.BaseAddress() + 0x40000000; // = 0x340000000
         if (info.segments.size() >= 3) {
             u64 data_addr = info.segments[2].guest_address;
             u64 bss_addr  = info.bss_address;
             u64 bss_sz    = info.bss_size;
-            u64 struct_addr = bss_addr + bss_sz; // .bss 末尾
-            u32 check_val = 8;
-            memory.Write<u32>(struct_addr, check_val);
-            u64 ptr_addr = data_addr + 0x7BD0;
+
+            // 1) 全局指针: .data+0x7BD0 → 指向结构 {first_word=8}
+            u64 struct_addr = bss_addr + bss_sz;
+            memory.Write<u32>(struct_addr, 8);
+            u64 ptr_addr = BASE + (data_addr - 0x40000000) + 0x7BD0;
             memory.Write<u64>(ptr_addr, struct_addr);
-            LOG_INFO("PATCH: *0x%llx → 0x%llx (first_word=8)", ptr_addr, struct_addr);
-        } else {
-            LOG_WARN("PATCH: NRO has %zu segments, need >=3", info.segments.size());
+            LOG_INFO("PATCH: *0x%llx = 0x%llx (first_word=8)", ptr_addr, struct_addr);
+
+            // 2) 成功路径 (0x44bafc) 最终返回 MOVZ W0,#0x1 (0x52800020)
+            //    → patch 为 MOVZ W0,#0 (0x52800000)
+            u64 patch_ret = BASE + 0x4bb28;
+            memory.Write<u32>(patch_ret, 0x52800000); // MOVZ W0, #0
+            LOG_INFO("PATCH: 0x44bb28: MOVZ W0,#0x1 → MOVZ W0,#0");
+
+            // 3) 失败路径 (0x44b5ac): tail-call B 0x449dc0 → B trampoline(RET 0)
+            u64 tramp_addr = struct_addr + 16;
+            u32 tramp[2] = {0x52800000, 0xD65F03C0};
+            memory.Write<u32>(tramp_addr, tramp[0]);
+            memory.Write<u32>(tramp_addr + 4, tramp[1]);
+            u64 patch_b = BASE + 0x4b5ac;
+            s64 b_off = (s64)(tramp_addr - patch_b);
+            if (b_off % 4 == 0) {
+                memory.Write<u32>(patch_b, 0x14000000 | (((u32)(b_off / 4)) & 0x3FFFFFF));
+                LOG_INFO("PATCH: 0x44b5ac: B trampoline → RET 0");
+            }
+
+            // 4) NOP 所有 init wrapper 中的 CBNZ 检查
+            //    init wrapper 在 0x45655c–0x4565f0 区域有多个 CBNZ
+            for (u64 a = 0x456558; a < 0x4565f0; a += 4) {
+                if (a == 0x456558) continue; // 跳过 BL
+                u64 abs_a = BASE + a;
+                u32 inst;
+                if (Failed(memory.Read(abs_a, &inst))) continue;
+                if ((inst & 0xFE000000) == 0x34000000 && (inst & 0x2000000)) {
+                    memory.Write<u32>(abs_a, 0xD503201F);
+                    LOG_INFO("PATCH: CBNZ 0x%llx → NOP", abs_a);
+                }
+            }
+
+            // ── 5) 刷新指令缓存 ────────────────────
+            // 写入可执行内存后必须在 ARM64 上清指令缓存
+            // 将文本段临时改为 RW 写入后恢复 RX，并刷新 icache
+            mach_vm_address_t t_start = (mach_vm_address_t)memory.Pointer(BASE + 0x440000);
+            mach_vm_address_t t_end   = (mach_vm_address_t)memory.Pointer(BASE + 0x460000);
+            if (t_start && t_end) {
+                mach_vm_protect(mach_task_self(), t_start, t_end - t_start, 0,
+                                VM_PROT_READ | VM_PROT_WRITE);
+                __builtin___clear_cache((char*)t_start, (char*)t_end);
+                mach_vm_protect(mach_task_self(), t_start, t_end - t_start, 0,
+                                VM_PROT_READ | VM_PROT_EXECUTE);
+                LOG_INFO("PATCH: icache invalidated + prot restored");
+            }
         }
     }
 
