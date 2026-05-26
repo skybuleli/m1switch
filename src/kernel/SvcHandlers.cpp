@@ -611,6 +611,54 @@ SVC(SvcBreak) {
         }
     }
 
+    // ── 诊断 dump（仅首次触发时）────────────────────
+    static bool dump_once = false;
+    if (!dump_once) {
+        dump_once = true;
+        LOG_ERROR("=== BREAK DIAGNOSTIC DUMP ===");
+        // 完整寄存器
+        for (int i = 0; i < 30; i += 4) {
+            LOG_ERROR("  x%02d=%016llx  x%02d=%016llx  x%02d=%016llx  x%02d=%016llx",
+                      i, state->x[i], i+1, state->x[i+1],
+                      i+2, state->x[i+2], i+3, state->x[i+3]);
+        }
+        LOG_ERROR("  sp=%016llx  pc=%016llx", state->sp, state->pc);
+
+        // 读栈回溯（围绕 payload 地址）
+        if (g_mem && address >= g_mem->BaseAddress()) {
+            const u64 mem_off = address - g_mem->BaseAddress();
+            LOG_ERROR("=== STACK AROUND PAYLOAD (address=0x%llx) ===", address);
+            // 显示 address 前后 40 字节
+            u64 start = (mem_off > 40) ? mem_off - 40 : 0;
+            for (u64 o = start; o < start + 80; o += 8) {
+                u64 val;
+                if (!Failed(g_mem->Read(o, &val))) {
+                    LOG_ERROR("  [%c0x%llx] = 0x%016llx",
+                              o == mem_off ? '>' : ' ', address - mem_off + o, val);
+                }
+            }
+        }
+
+        // 读 init 函数检查的全局指针 .data+0x7BD0
+        // 通过扫描 NRO 各个 segment 来定位
+        LOG_ERROR("=== INIT CHECK POINTER SCAN ===");
+        // 盲扫关键地址范围 (.data 段典型范围)
+        // 对于 hello_colours, .data 在 runtime 0x34064C000 附近
+        // 扫描 0x300000000 - 0x370000000 范围内可疑指针
+        for (u64 paddr = 0x34064C000; paddr < 0x340700000; paddr += 0x1000) {
+            u64 ptr;
+            if (g_mem->Read(paddr, &ptr) == Result::Success && ptr >= 0x300000000 && ptr < 0x400000000) {
+                u32 first_word;
+                if (g_mem->Read(ptr, &first_word) == Result::Success) {
+                    if (first_word == 8 || first_word <= 16) {
+                        LOG_ERROR("  *[0x%llx] = 0x%llx  (first_word=%u)", paddr, ptr, first_word);
+                    }
+                }
+            }
+        }
+        LOG_ERROR("=== END DIAGNOSTIC ===");
+    }
+
     g_guest_crashed.store(true);
     g_guest_exited.store(true);
     Ret(state, 0);
