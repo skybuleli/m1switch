@@ -327,20 +327,16 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
             }
         }
 
-        // NOP init wrapper 中所有 CBZ/CBNZ (0x45655c–0x4565f0)
-        {
-            int n_nop = 0;
-            for (u64 a = 0x456558; a < 0x4565f0; a += 4) {
-                u32* p = (u32*)(tp + (a - text_start));
-                // CBZ/CBNZ 32-bit: bits[31:25]=0_1_1_0_1_0_x → 0x34/0x35<<25
-                u32 top7 = *p & 0xFE000000;
-                if (top7 == 0x34000000 || top7 == 0x35000000) {
-                    *p = 0xD503201F;
-                    __builtin___clear_cache((char*)p, (char*)(p+1));
-                    n_nop++;
-                }
-            }
-            if (n_nop > 0) LOG_INFO("PATCH: NOPed %d CBZ/CBNZ in init wrapper", n_nop);
+        // 用 memory_.Write 直接写 NOP: 覆盖 init_fn_3 的 error CBNZ (0x45655c)
+        // 这里不能用 tp Pointer，因为 MapPhysical 用 data remap 而非 Copy
+        u64 nop_addr = text_addr + 0x45655c;
+        u32 nop_val = 0;
+        memory_.Read(nop_addr, &nop_val);
+        if ((nop_val & 0xFE000000) == 0x34000000 || (nop_val & 0xFE000000) == 0x35000000) {
+            memory_.Write<u32>(nop_addr, 0xD503201F);
+            LOG_INFO("PATCH: NOP 0x45655c via memory_.Write");
+        } else {
+            LOG_INFO("PATCH: 0x45655c=0x%08x via memory_.Read (not CBZ/CBNZ, skip)", nop_val);
         }
         // 全局指针: .data+0x7BD0 在运行时写入, 必须在加载前初始化
         // 但这是 .data 段, 在保护之前写

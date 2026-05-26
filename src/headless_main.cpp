@@ -206,7 +206,20 @@ int main(int argc, char** argv) {
     u32 main_handle = KernelHandleTable().Create(main_thread);
     LOG_INFO("Main thread handle=0x%x", main_handle);
 
-    // ── 5a. 修正 libnx 全局指针 + 绕过 applet 失败路径 ──
+    // ── 5a. NOP init wrapper 的 CBNZ at 0x45655c ────
+    // memory_.Write 用绝对 guest 地址，不受 Pointer 问题影响
+    {
+        u32 val = 0;
+        if (memory.Read(0x4045655c, &val) == Result::Success &&
+            (val == 0x35000600)) {
+            memory.Write<u32>(0x4045655c, 0xD503201F);
+            LOG_INFO("PATCH: NOP 0x45655c CBNZ (was 0x%08x)", val);
+        } else {
+            LOG_INFO("PATCH: 0x45655c=0x%08x (skip NOP)", val);
+        }
+    }
+
+    // ── 5b. 修正 libnx 全局指针 + 绕过 applet 失败路径 ──
     {
         // NRO 文本段在 guest 绝对地址 0x340000000
         // segment 地址是 NRO_TEXT_BASE(0x40000000) 相对的
