@@ -109,6 +109,7 @@ cmake --build build
 - [x] P0 补: SPIR-V 指令扩展 (SHL/SHR/BFE/BFI/I2F/F2I/I2I/F2F/IMNMX/FSET/LEA/FSAT/FRCP/FRSQ/FSQRT/FEX2/FLG2/SNegate/整型比较扩展)
 - [x] P0 补: ViewportTransform 数组写入 (16 视口 × 8 寄存器: scale_x/y/z, translate_x/y/z, swizzle)
 - [x] P1 #4: Fs 服务补全 (目录遍历 OpenDirectory, 文件属性 GetEntryType, SaveData 文件打开, 路径规范化, 句柄管理重构)
+- [x] P1 #5: SM hipc 协议修复 (Initialize CMIF 头污染修复, KSession 句柄返回, 原地 IPC 缓冲正确处理, GetService 响应 CMIF 封装)
 
 **Phase 3** — Services & IPC (Complete)
 - [x] SM service (service manager)

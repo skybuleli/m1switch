@@ -26,11 +26,8 @@ public:
         switch (cmd_id) {
         case 0: // Initialize
             LOG_DEBUG("SM: Initialize");
-            // Write result word (0 = success)
-            if (*out_sz >= 4) {
-                memset(out, 0, 4);
-                *out_sz = 4;
-            }
+            // No data words — libnx only needs the copy handle
+            *out_sz = 0;
             return true;
 
         case 2: // GetService

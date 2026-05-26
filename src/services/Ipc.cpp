@@ -161,10 +161,12 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // 使用内核句柄表创建一个通用对象并返回其句柄
     if (session && session->service_name == "sm:" && cmd_id == 0) {
         if (resp_remaining >= 4 + 4) {
-            // 创建内核对象（KEvent 最轻量，可以用于 svcCloseHandle）
-            KEvent* evt = new KEvent();
-            u32 kernel_handle = KernelHandleTable().Create(evt);
-            LOG_DEBUG("SM: created handle 0x%x for Initialize response", kernel_handle);
+            // libnx 期望 SM 初始化返回服务进程句柄
+            // 使用 KSession 更接近真实 SM（vs KEvent）
+            KSession* sess = new KSession();
+            sess->client_handle = session_handle;  // 关联此会话
+            u32 kernel_handle = KernelHandleTable().Create(sess);
+            LOG_DEBUG("SM: created KSession handle 0x%x for Initialize", kernel_handle);
 
             shdr_pos = resp_ptr;
             handle_pos = resp_ptr + 4;
@@ -193,21 +195,38 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // ── 调用服务 ─────────────────────────────────────────
     bool handled = session->service->HandleCommand(cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
 
+    // 所有 CMIF 响应都需要以 CmifOutHeader{magic=SFCO, result=0} 开头
+    // libnx 的 cmifParseResponse 强制检查此 magic
+    u32 cmif_magic = 0x4F434653; // "SFCO" 
+    u32 cmif_result = 0;           // 成功
+    
     if (handled) {
-        // 计算总响应大小
-        size_t header_size = (size_t)(raw_out - response); // headeroffset
-        size_t total_size = header_size + raw_out_max;
+        size_t header_size = (size_t)(raw_out - response);
         
-        // 写入 SpecialHeader（如果有句柄）
+        if (raw_out_max > 0) {
+            // 服务返回了实际数据 → 需要 CMIF 封装：
+            // 在 data_words 开头插入 CmifOutHeader{magic=SFCO, result=0}
+            // 将服务输出向后移 8 字节腾出空间
+            memmove(raw_out + 8, raw_out, raw_out_max);
+            std::memcpy(raw_out, &cmif_magic, 4);
+            std::memcpy(raw_out + 4, &cmif_result, 4);
+            
+            u32 total_out_size = 8 + raw_out_max;
+            resp_hdr.num_data_words = (total_out_size + 3) / 4;
+        } else {
+            // 只有句柄没有数据（如 SM::Initialize）→ 不插入 CMIF 头
+            // libnx 使用原地 IPC 缓冲，额外写入会污染下次请求
+            resp_hdr.num_data_words = 0;
+        }
+        
+        size_t total_out_size = raw_out_max > 0 ? (8 + raw_out_max) : 0;
+        size_t total_size = header_size + total_out_size;
+        
         if (shdr_pos) {
             HipcSpecialHeader shdr = {};
             shdr.num_copy_handles = num_copy_handles;
             shdr.num_move_handles = num_move_handles;
             std::memcpy(shdr_pos, &shdr, sizeof(shdr));
-            // 设置 data_words 在句柄之后
-            resp_hdr.num_data_words = (raw_out_max + 3) / 4;
-        } else if (raw_out_max > 0) {
-            resp_hdr.num_data_words = (raw_out_max + 3) / 4;
         }
         
         *resp_size = total_size;
