@@ -161,6 +161,34 @@ public:
     }
 };
 
+// ── AmProxyService (applet proxy sub-session) ───────────────
+// Created by appletOE cmd=0 (GetAppletProxy). Handles proxy session
+// commands: GetAppletResourceUserId, GetWindowController, etc.
+class AmProxyService : public ServiceBase {
+public:
+    const char* Name() const override { return "appletProxy"; }
+
+    bool HandleCommand(u32 cmd_id, const u8* in, size_t in_sz,
+                       u8* out, size_t* out_sz) override {
+        switch (cmd_id) {
+        case 0: // GetAppletResourceUserId
+            if (*out_sz >= 8) {
+                u64 uid = 1; std::memcpy(out, &uid, 8); *out_sz = 8;
+            }
+            return true;
+        case 1: // GetWindowController
+        case 2: // GetSelfController
+        case 3: // GetAudioController
+        case 4: // GetDisplayController
+            LOG_DEBUG("AmProxy: sub-session cmd %u (stub)", cmd_id);
+            *out_sz = 0; return true;
+        default:
+            LOG_TRACE("AmProxy: unhandled cmd %u", cmd_id);
+            *out_sz = 0; return true;
+        }
+    }
+};
+
 // ── Main Applet Service ────────────────────────────────────
 class AmService : public ServiceBase {
 public:
@@ -170,12 +198,16 @@ public:
     {
         IpcManager::Instance().RegisterService("appletOE:", this);
         IpcManager::Instance().RegisterService("appletAE:", this);
+        if (!s_proxy) s_proxy = new AmProxyService();
     }
 
     ~AmService() {
         delete window_controller_;
         delete common_state_getter_;
     }
+
+    // Proxy session used for GetAppletProxy response
+    static AmProxyService* s_proxy;
 
     const char* Name() const override { return "appletOE:"; }
 
@@ -194,9 +226,13 @@ public:
                        u8* out, size_t* out_sz) override {
         switch (cmd_id) {
         // ── Main applet interface ──
-        case 0: // Initialize
-            LOG_DEBUG("AM: Initialize");
-            *out_sz = 0;
+        case 0: // GetAppletProxy — 返回子会话 handle
+            LOG_DEBUG("AM: GetAppletProxy → create proxy session");
+            if (*out_sz >= 4) {
+                u32 sub = IpcManager::Instance().CreateSession(s_proxy);
+                std::memcpy(out, &sub, sizeof(sub));
+                *out_sz = 4;
+            }
             return true;
 
         case 1: // GetStorageChannelEvent / GetAppletId
@@ -439,8 +475,12 @@ public:
     }
 };
 
+// ── Static member definition ────────────────────────────────
+AmProxyService* AmService::s_proxy = nullptr;
+
 // ── Global instances ────────────────────────────────────────
 static AmService g_am_service;
+static AmProxyService g_am_proxy;
 static AppletService g_applet_service;
 static NsService g_ns_service;
 static LdrService g_ldr_service;

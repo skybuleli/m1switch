@@ -311,6 +311,8 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         needs_move_handle = true;
     } else if ((sname == "apm" || sname == "apm:sys") && cmd_id == 0) {
         needs_move_handle = true;
+    } else if ((sname == "appletOE" || sname == "appletAE") && cmd_id == 0) {
+        needs_move_handle = true;
     }
 
     // SM::Initialize (cmd=0): 返回会话本身的句柄作为 copy handle

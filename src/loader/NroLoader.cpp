@@ -300,6 +300,57 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         }
     }
 
+    // ── hello_colours init patch ────────────────────
+    // 在 mprotect 之前修改，避免 icache / RW 问题
+    if (text_size > 0x400000) { // hello_colours: 0x486000
+        u8* tp = memory_.Pointer(text_addr);
+        if (!tp) tp = (u8*)((u8*)memory_.BasePointer() + text_addr);
+        if (!tp) { LOG_WARN("PATCH: cannot get text pointer"); }
+        else {
+        // 成功路径返回值: 文件偏移 0x44bb28 → runtime = text_addr + (0x44bb28 - text_start)
+        u64 off_ret = 0x44bb28 - text_start;
+        u32* p_ret = (u32*)(tp + off_ret);
+        if (*p_ret == 0x52800020) { // MOVZ W0, #0x1
+            *p_ret = 0x52800000;    // MOVZ W0, #0
+            __builtin___clear_cache((char*)p_ret, (char*)(p_ret + 1));
+            LOG_INFO("PATCH: 0x44bb28 return 0 (off=0x%llx, inst=0x%08x)", off_ret, *p_ret);
+        } else {
+            LOG_INFO("PATCH: 0x44bb28 not found at +0x%llx (inst=0x%08x)", off_ret, *p_ret);
+        }
+        // 失败路径: 0x44b5a8 MOVZ W3,#0xB + 0x44b5ac B 0x449dc0
+        // → 改为 MOVZ W0,#0 + RET (确保返回 0)
+        u64 off_ba = 0x44b5a8 - text_start;
+        u64 off_bb = 0x44b5ac - text_start;
+        u32* p_ba = (u32*)(tp + off_ba);
+        u32* p_bb = (u32*)(tp + off_bb);
+        if ((*p_bb & 0xFC000000) == 0x14000000) { // B at 0x44b5ac
+            *p_ba = 0x52800000; // MOVZ W0, #0
+            *p_bb = 0xD65F03C0; // RET
+            __builtin___clear_cache((char*)p_ba, (char*)(p_bb + 1));
+            LOG_INFO("PATCH: 0x44b5a8-0x44b5ac → MOVZ W0,#0; RET");
+        } else {
+            LOG_INFO("PATCH: 0x44b5ac not B (inst=0x%08x)", *p_bb);
+        }
+        // 全局指针: .data+0x7BD0 在运行时写入, 必须在加载前初始化
+        // 但这是 .data 段, 在保护之前写
+        if (data_size > 0x4000) {
+            u8* data_ptr = tp + (data_start - text_start);
+            // 在 .bss 区域结尾放一个小结构 {first_word=8}
+            u64 bss_off = (text_size + rodata_size + data_size + 0xFFF) & ~0xFFF;
+            u8* bss_area = tp + (bss_off - text_start); // approximate
+            // 更精确: 从已知的 bss_addr 算
+            u64 bss_rel = (text_addr + text_size + rodata_size + data_size + 0xFFF) & ~0xFFF;
+            u64* ptr_loc = (u64*)(data_ptr + 0x7BD0);
+            u64 struct_addr = bss_rel + 0x100; // 在 bss 内偏移 0x100
+            u32* struct_val = (u32*)(tp + (struct_addr - text_addr));
+            *struct_val = 8;
+            *ptr_loc = struct_addr;
+            __builtin___clear_cache((char*)ptr_loc, (char*)(ptr_loc + 1));
+            LOG_INFO("PATCH: *data+0x7BD0 = 0x%llx (first_word=8)", struct_addr);
+        }
+        } // !text_ptr null
+    }
+
     // ── Protect segments ─────────────────────────────
     // .text → RX (no more writes)
     {
