@@ -65,6 +65,9 @@ public:
 
     static IpcManager& Instance();
 
+    // 按 session ID 查找服务
+    ServiceBase* GetServiceBySession(u32 session_id);
+
 private:
     struct Session {
         u32 id;
@@ -72,6 +75,7 @@ private:
         ServiceBase* service = nullptr;
         bool is_domain = false; // 是否已转为 domain 模式
         u32 next_object_id = 1; // 域模式下下一个对象 ID（递增分配）
+        std::unordered_map<u32, ServiceBase*> domain_objects; // object_id → sub-service
     };
     std::unordered_map<std::string, ServiceBase*> services_;
     std::vector<Session> sessions_;

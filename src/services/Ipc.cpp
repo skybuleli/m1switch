@@ -161,6 +161,14 @@ u32 IpcManager::Connect(const char* name) {
     return sid;
 }
 
+ServiceBase* IpcManager::GetServiceBySession(u32 session_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& s : sessions_) {
+        if (s.id == session_id) return s.service;
+    }
+    return nullptr;
+}
+
 u32 IpcManager::CreateSession(ServiceBase* service) {
     std::lock_guard<std::mutex> lock(mutex_);
     u32 sid = next_session_++;
@@ -265,6 +273,14 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     size_t raw_in_size = 0;
 
     u32 cmif_token = 0;
+
+    // 域模式: 解析 CmifDomainInHeader 获取 object_id（用于后续路由到子服务）
+    u32 domain_object_id = 0;
+    if (session && session->is_domain && req_hdr.num_data_words > 0) {
+        CmifDomainInHeader domain_hdr = {};
+        std::memcpy(&domain_hdr, data + cmif_off, sizeof(domain_hdr));
+        domain_object_id = domain_hdr.object_id;
+    }
 
     // 域模式: 在 CmifDomainInHeader 之后跳过 16 字节到达 CmifInHeader
     size_t domain_skip = session->is_domain ? sizeof(CmifDomainInHeader) : 0;
@@ -446,8 +462,19 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         }
     } else {
         // ── 普通 Request 命令 → 转发给服务 ─────────────────
-        if (session->service) {
-            handled = session->service->HandleCommand(cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
+        // 域模式: 按 object_id 路由到已注册的子服务
+        ServiceBase* target_service = session ? session->service : nullptr;
+        if (session && session->is_domain && domain_object_id > 0) {
+            auto it = session->domain_objects.find(domain_object_id);
+            if (it != session->domain_objects.end()) {
+                target_service = it->second;
+            } else if (session->service != nullptr) {
+                // fallback: 用父服务（兼容未注册 object 的请求）
+                LOG_TRACE("IPC: domain object 0x%x not registered, fallback to parent", domain_object_id);
+            }
+        }
+        if (target_service) {
+            handled = target_service->HandleCommand(cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
         } else {
             LOG_WARN("IPC: no service handler for session 0x%x ('%s')", session_handle, session->service_name.c_str());
             raw_out_max = 0;
@@ -467,8 +494,16 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
             if (session && session->is_domain) {
                 // 域模式：不提取 move handle，分配递增的对象 ID
                 u32 obj_id = session->next_object_id++;
-                LOG_DEBUG("IPC: domain object 0x%x (session=0x%x) for '%s' cmd=%u",
-                          obj_id, move_handle, svc_name_cstr, cmd_id);
+                // 查找子服务（move_handle 是 CreateSession 返回的 session ID）
+                ServiceBase* obj_svc = IpcManager::Instance().GetServiceBySession(move_handle);
+                if (obj_svc) {
+                    session->domain_objects[obj_id] = obj_svc;
+                    LOG_DEBUG("IPC: domain object 0x%x (svc=%p) for '%s' cmd=%u",
+                              obj_id, (void*)obj_svc, svc_name_cstr, cmd_id);
+                } else {
+                    LOG_WARN("IPC: domain object 0x%x: no service found for session 0x%x",
+                             obj_id, move_handle);
+                }
                 if (domain_out_count < 8) {
                     domain_out_objects[domain_out_count++] = obj_id;
                 }

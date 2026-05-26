@@ -173,6 +173,7 @@ set_target_properties(m1switch PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE_COPYRIGHT "MIT License"
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/src/Info.plist"
     XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development"
     # Hardened Runtime 会阻止 MAP_JIT / mach_vm / SIGTRAP 等核心操作
     # 需要为正式分发添加 com.apple.security.cs.allow-jit 等 entitlement
