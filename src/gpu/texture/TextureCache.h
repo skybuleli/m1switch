@@ -2,10 +2,14 @@
 
 #include "common/Types.h"
 #include "common/Log.h"
+#include "memory/Memory.h"
 #include <Metal/Metal.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <mutex>
 #include <vector>
+#include <functional>
+#include <atomic>
 
 enum class MaxwellPixelFormat : u32 {
     RGBA8Unorm      = 0x37,
@@ -81,8 +85,22 @@ public:
     SamplerInfo ParseTSC(const u8* sampler_pool, u64 offset) const;
     TextureInfo ParseTIC(const u8* texture_pool, u64 offset) const;
 
+    // ── Invalidation ───────────────────────────────────────
+    // Remove a single cached texture whose gpu_address matches.
+    // Removal is lazy: the Metal texture reference is released,
+    // and GetOrCreate will re-upload on the next lookup.
+    void Invalidate(u64 gpu_address);
+
+    // Remove all cached textures whose gpu_address range overlaps
+    // the given [address, address+size) region.
+    void InvalidateRegion(u64 address, u64 size);
+
     void EndFrame();
     void Flush();
+
+    // Set the Memory instance for write stamp tracking and register
+    // a write callback that invalidates overlapping cache entries.
+    void SetMemory(Memory* mem);
 
     size_t Count() const { std::lock_guard l(mutex_); return entries_.size(); }
     size_t MemoryUsed() const { return total_memory_; }
@@ -103,11 +121,15 @@ private:
     u64 MakeSamplerKey(const SamplerInfo& info) const;
 
     id<MTLDevice> device_;
+    Memory* memory_ = nullptr;
     mutable std::mutex mutex_;
     std::unordered_map<u64, CachedTexture> entries_;
     std::unordered_map<u64, id<MTLSamplerState>> sampler_cache_;
     u64 frame_count_ = 0;
     size_t total_memory_ = 0;
+
+    // Address→key index for fast invalidation by gpu_address
+    std::unordered_multimap<u64, u64> addr_index_;
     static constexpr size_t MAX_CACHE_MEMORY = 512 * 1024 * 1024;
     static constexpr u64 EVICTION_THRESHOLD = 60;   // frames before an unused entry becomes evictable
     static constexpr u32 MAX_CACHE_ENTRIES = 4096;  // soft cap on entry count
@@ -116,4 +138,8 @@ private:
     void EvictLRU();
     u32 ComputeSurfaceSize(u32 width, u32 height, u32 bpp, u32 tile_mode) const;
     u64 ComputeMipOffset(const TextureInfo& info, u32 mip_level) const;
+
+    // Helpers for address index management
+    void IndexAdd(u64 gpu_address, u64 cache_key);
+    void IndexRemove(u64 gpu_address, u64 cache_key);
 };

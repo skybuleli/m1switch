@@ -1,6 +1,7 @@
 #include "gpu/texture/TextureCache.h"
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 
 // ═══════════════════════════════════════════════════════════
 // Texture Cache Implementation
@@ -116,6 +117,117 @@ u32 TextureCache::BytesPerPixel(MaxwellPixelFormat fmt) const {
 }
 
 // ═══════════════════════════════════════════════════════════
+// Memory binding
+// ═══════════════════════════════════════════════════════════
+//
+// Registers a write callback with the Memory instance so that
+// guest writes to texture-backed memory automatically invalidate
+// stale cache entries.
+
+void TextureCache::SetMemory(Memory* mem) {
+    memory_ = mem;
+    if (memory_) {
+        memory_->SetWriteCallback([this](u64 address, u64 size) {
+            // Fast path: exact address match via O(1) address index.
+            // Fall back to O(n) region scan only for large (DMA-sized) writes.
+            Invalidate(address);
+            if (size > 8) {
+                InvalidateRegion(address, size);
+            }
+        });
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Address index management
+// ═══════════════════════════════════════════════════════════
+
+void TextureCache::IndexAdd(u64 gpu_address, u64 cache_key) {
+    if (gpu_address != 0) {
+        addr_index_.emplace(gpu_address, cache_key);
+    }
+}
+
+void TextureCache::IndexRemove(u64 gpu_address, u64 cache_key) {
+    if (gpu_address == 0) return;
+    auto [begin, end] = addr_index_.equal_range(gpu_address);
+    for (auto it = begin; it != end; ++it) {
+        if (it->second == cache_key) {
+            addr_index_.erase(it);
+            return;
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Invalidation
+// ═══════════════════════════════════════════════════════════
+
+void TextureCache::Invalidate(u64 gpu_address) {
+    if (gpu_address == 0) return;
+
+    std::lock_guard l(mutex_);
+
+    // Fast path: look up by address index
+    auto [begin, end] = addr_index_.equal_range(gpu_address);
+    if (begin == end) return;
+
+    std::vector<u64> to_erase;
+    for (auto it = begin; it != end; ++it) {
+        to_erase.push_back(it->second);
+    }
+    addr_index_.erase(begin, end);
+
+    for (u64 key : to_erase) {
+        auto eit = entries_.find(key);
+        if (eit != entries_.end()) {
+            total_memory_ -= eit->second.size_bytes;
+            [eit->second.texture release];
+            entries_.erase(eit);
+        }
+    }
+
+    if (!to_erase.empty()) {
+        LOG_DEBUG("TextureCache: invalidated %zu entries at gpu_addr 0x%llx",
+                  to_erase.size(), gpu_address);
+    }
+}
+
+void TextureCache::InvalidateRegion(u64 address, u64 size) {
+    if (address == 0 || size == 0) return;
+
+    std::lock_guard l(mutex_);
+
+    u64 region_end = address + size;
+    std::vector<u64> to_erase;
+
+    // Linear scan of entries — sufficient for < 4096 entries
+    for (const auto& [key, entry] : entries_) {
+        u64 tex_addr = entry.info.gpu_address;
+        u64 tex_end = tex_addr + entry.size_bytes;
+        // Check overlap: [tex_addr, tex_end) ∩ [address, address+size) ≠ ∅
+        if (tex_addr < region_end && tex_end > address) {
+            to_erase.push_back(key);
+        }
+    }
+
+    for (u64 key : to_erase) {
+        auto eit = entries_.find(key);
+        if (eit != entries_.end()) {
+            IndexRemove(eit->second.info.gpu_address, key);
+            total_memory_ -= eit->second.size_bytes;
+            [eit->second.texture release];
+            entries_.erase(eit);
+        }
+    }
+
+    if (!to_erase.empty()) {
+        LOG_DEBUG("TextureCache: invalidated %zu entries in region [0x%llx, 0x%llx)",
+                  to_erase.size(), address, region_end);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
 // Texture lookup / creation
 // ═══════════════════════════════════════════════════════════
 
@@ -123,7 +235,7 @@ id<MTLTexture> TextureCache::GetOrCreate(const TextureInfo& info,
                                           const u8* guest_memory) {
     u64 key = MakeKey(info);
 
-    // ── Check cache ────────────────────────────────────
+    // ── Check cache (invalidation handled via Invalidate/InvalidateRegion) ────
     {
         std::lock_guard l(mutex_);
         auto it = entries_.find(key);
@@ -160,6 +272,7 @@ id<MTLTexture> TextureCache::GetOrCreate(const TextureInfo& info,
 
         total_memory_ += entry.size_bytes;
         entries_[key] = entry;
+        IndexAdd(info.gpu_address, key);
 
         // Evict if over budget (memory or entry count)
         if (total_memory_ > MAX_CACHE_MEMORY || entries_.size() > MAX_CACHE_ENTRIES) {
@@ -430,9 +543,10 @@ void TextureCache::EvictLRU() {
 
     u32 evicted = 0;
     for (u32 i = 0; i < to_evict; i++) {
-        u64 addr = sorted[i].first;
-        auto it = entries_.find(addr);
+        u64 cache_key_from_sort = sorted[i].first;
+        auto it = entries_.find(cache_key_from_sort);
         if (it != entries_.end()) {
+            IndexRemove(it->second.info.gpu_address, cache_key_from_sort);
             total_memory_ -= it->second.size_bytes;
             [it->second.texture release];
             entries_.erase(it);
@@ -1099,6 +1213,7 @@ void TextureCache::EndFrame() {
         u32 evicted = 0;
         for (auto it = entries_.begin(); it != entries_.end(); ) {
             if (it->second.frame_used < oldest_allowed) {
+                IndexRemove(it->second.info.gpu_address, it->first);
                 total_memory_ -= it->second.size_bytes;
                 [it->second.texture release];
                 it = entries_.erase(it);
@@ -1120,6 +1235,7 @@ void TextureCache::Flush() {
         [entry.texture release];
     }
     entries_.clear();
+    addr_index_.clear();
     total_memory_ = 0;
     for (auto& [key, sampler] : sampler_cache_) {
         [sampler release];

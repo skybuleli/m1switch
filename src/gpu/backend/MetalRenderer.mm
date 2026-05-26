@@ -751,10 +751,17 @@ void MetalRenderer::CopyRenderTargetsToGuest(id<MTLCommandBuffer> cmdBuf) {
         [blit endEncoding];
 
         // After GPU completes, copy staging → guest memory
+        // and invalidate any texture cache entries overlapping this RT.
+        __block u64 rt_addr = rt.address;
+        __block u32 rt_size = size;
+        __block TextureCache* tex_cache = texture_cache_;
+        __block Memory* mem_ptr = mem;
         [cmdBuf addCompletedHandler:^(id<MTLCommandBuffer>) {
             u8* staging_ptr = (u8*)[staging contents];
             if (staging_ptr && guest_ptr) {
                 memcpy(guest_ptr, staging_ptr, size);
+                // Invalidate stale texture cache entries overlapping this RT
+                if (tex_cache) tex_cache->InvalidateRegion(rt_addr, rt_size);
             }
             [staging release];
         }];

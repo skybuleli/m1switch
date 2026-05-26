@@ -9,6 +9,8 @@
 #include <mutex>
 #include <vector>
 #include <cstring>
+#include <functional>
+#include <atomic>
 
 struct MemoryPage;
 
@@ -57,6 +59,18 @@ public:
 
     void DumpPages() const;
 
+    // ── Write tracking ─────────────────────────────────────
+    // Write callback is called after every Write<T>() operation.
+    // BumpWriteStamp increments the global write version, which
+    // TextureCache uses to detect stale entries.
+    using MemoryWriteCallback = std::function<void(u64 address, u64 size)>;
+    void SetWriteCallback(MemoryWriteCallback cb) { write_callback_ = std::move(cb); }
+
+    // Bump the global write stamp. Call this when memory is modified
+    // outside of Write<T>() (e.g., GPU DMA, render target copies).
+    void BumpWriteStamp() { write_stamp_++; }
+    u64 GetWriteStamp() const { return write_stamp_; }
+
 private:
     Result AllocateSpace();
     void  FreeSpace();
@@ -71,6 +85,8 @@ private:
     struct PageInfo { u64 size; u32 flags; };
     std::unordered_map<u64, PageInfo> pages_;
     mutable std::mutex mutex_;
+    MemoryWriteCallback write_callback_;
+    std::atomic<u64> write_stamp_{0};
 };
 
 template <typename T>
@@ -88,5 +104,9 @@ Result Memory::Write(u64 address, T value) {
         return Result::InvalidArgument;
     auto* base = static_cast<u8*>(base_);
     std::memcpy(base + address, &value, sizeof(T));
+    write_stamp_++;
+    if (write_callback_) {
+        write_callback_(address, sizeof(T));
+    }
     return Result::Success;
 }
