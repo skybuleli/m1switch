@@ -311,8 +311,9 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     std::string svc_name = session->service_name;
     const char* svc_name_cstr = svc_name.c_str();
 
-    // 标记需要从服务输出中提取 move handle 的情形
+    // 标记需要从服务输出中提取 move/copy handle 的情形
     bool needs_move_handle = false;
+    bool needs_copy_handle = false;  // HidAppletResource 需要 copy handle
     std::string sname = svc_name;
     if (sname.back() == ':') sname.pop_back();
     if (sname == "sm" && cmd_id == 1) {
@@ -331,11 +332,11 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         needs_move_handle = true;
     } else if (session && session->service &&
                strcmp(session->service->Name(), "HidAppletResource") == 0) {
-        // HID 子会话的所有命令也返回 move handle (GetSharedMemoryHandle)
+        // HID 子会话 cmd=0 (GetSharedMemoryHandle): 返回 KSharedMemory copy handle。
+        // 使用 copy handle 而非 move handle（libnx 从 ipcOut->Handles[0] 读取）
         needs_move_handle = true;
+        needs_copy_handle = true;
     }
-    
-
 
     // SM::Initialize (cmd=0): 返回会话本身的句柄作为 copy handle
     if (sname == "sm" && cmd_id == 0) {
@@ -351,12 +352,19 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         }
     }
 
-    // 预分配 move handle 空间: 服务将 session handle 写入 raw_out[0..3] 后，
-    // Ipc 层会将其提取到此处
-    if (needs_move_handle && resp_remaining >= 4 + 4) {
+    // 预分配 move/copy handle 空间: 服务将 handle 写入 raw_out[0..3] 后，
+    // Ipc 层会将其提取到此处的 handle_pos。
+    // 仅对普通请求(type=4)有效，控制命令(type=5 如 ConvertCurrentObjectToDomain)
+    // 不应提取 move handle，否则 domain_id 会被误提取为句柄。
+    bool is_control = (req_hdr.type == 5);
+    if (needs_move_handle && !is_control && resp_remaining >= 4 + 4) {
         shdr_pos = resp_ptr;
         handle_pos = resp_ptr + 4;
-        num_move_handles = 1;
+        if (needs_copy_handle) {
+            num_copy_handles = 1;
+        } else {
+            num_move_handles = 1;
+        }
         resp_hdr.has_special_header = 1;
         resp_ptr += 4 + 4;
         resp_remaining -= 4 + 4;
@@ -389,7 +397,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // ── 处理 Control 命令（type=5）────────────────────
     // Control 命令由 IPC 层直接处理，不转发给服务
     bool handled = false;
-    bool is_control = (req_hdr.type == 5);
+    // is_control 已在 handle 预分配前声明
     
     if (is_control) {
         if (cmd_id == 0) {
@@ -433,8 +441,9 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     LOG_DEBUG("IPC: handled=%d is_control=%d cmd=%u for session 0x%x service=%s", 
               handled, is_control, cmd_id, session_handle, svc_name_cstr);
 
-    // 后处理：从 raw_out 提取 move handle（服务将句柄写入 raw_out[0..3]）
-    if (handled && handle_pos && raw_out_max >= 4) {
+    // 后处理：从 raw_out 提取 move/copy handle（服务将句柄写入 raw_out[0..3]）
+    // 控制命令(type=5)不提取，防止 domain_id 被误提取为句柄
+    if (handled && handle_pos && !is_control && raw_out_max >= 4) {
         u32 move_handle = 0;
         std::memcpy(&move_handle, raw_out, sizeof(move_handle));
         if (move_handle != 0) { // 验证是有效句柄 (session 0x1000+ 或 kernel 0xD000+)

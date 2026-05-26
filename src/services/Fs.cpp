@@ -159,6 +159,11 @@ public:
         case FsCmd::RenameFile:
             LOG_DEBUG("FS: RenameFile (桩)"); *out_sz = 0; return true;
 
+        case static_cast<FsCmd>(0):  // 回收缓冲区/空请求（type=2 close 或空初始化），无害化处理
+            LOG_DEBUG("FS: cmd=0 (no-op)");
+            *out_sz = 0;
+            return true;
+
         default:
             LOG_WARN("FS: 未处理命令 0x%08x", cmd_id);
             *out_sz = 0;
