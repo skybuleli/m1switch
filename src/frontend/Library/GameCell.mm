@@ -103,8 +103,9 @@ static std::unordered_map<std::string, NSImage*> g_cover_cache;
     NSString* home = NSHomeDirectory();
     NSString* cacheDir = [home stringByAppendingPathComponent:@"Library/Caches/m1switch/covers"];
     // 使用文件路径的 hash 作为缓存键
+    NSString* pathKey = [NSString stringWithUTF8String:game->path.c_str()];
     NSString* hashStr = [NSString stringWithFormat:@"%lu",
-                          (unsigned long)[game->path.c_str() hash]];
+                          (unsigned long)[pathKey hash]];
     NSString* coverPath = [cacheDir stringByAppendingPathComponent:
                             [hashStr stringByAppendingPathExtension:@"png"]];
 
