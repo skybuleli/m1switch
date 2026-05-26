@@ -76,6 +76,7 @@ public:
     ~TextureCache();
 
     id<MTLTexture> GetOrCreate(const TextureInfo& info, const u8* guest_memory);
+    id<MTLSamplerState> GetOrCreateSampler(const SamplerInfo& info);
 
     SamplerInfo ParseTSC(const u8* sampler_pool, u64 offset) const;
     TextureInfo ParseTIC(const u8* texture_pool, u64 offset) const;
@@ -99,9 +100,12 @@ private:
     void Untile(const u8* src, u8* dst, u32 width, u32 height, u32 bpp, u32 tile_mode, u32 pitch);
     id<MTLTexture> CreateTexture(const TextureInfo& info, const u8* guest_memory);
 
+    u64 MakeSamplerKey(const SamplerInfo& info) const;
+
     id<MTLDevice> device_;
     mutable std::mutex mutex_;
     std::unordered_map<u64, CachedTexture> entries_;
+    std::unordered_map<u64, id<MTLSamplerState>> sampler_cache_;
     u64 frame_count_ = 0;
     size_t total_memory_ = 0;
     static constexpr size_t MAX_CACHE_MEMORY = 512 * 1024 * 1024;

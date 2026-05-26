@@ -859,6 +859,104 @@ bool TextureCache::DecodeASTC(const u8* src, u8* dst,
 }
 
 // ═══════════════════════════════════════════════════════════
+// Sampler key generation
+// ═══════════════════════════════════════════════════════════
+
+u64 TextureCache::MakeSamplerKey(const SamplerInfo& info) const {
+    u64 key = 0;
+    key ^= (u64)info.min_filter;
+    key ^= (u64)info.mag_filter << 4;
+    key ^= (u64)info.wrap_u << 8;
+    key ^= (u64)info.wrap_v << 12;
+    key ^= (u64)info.wrap_w << 16;
+    key ^= (u64)(info.min_lod * 256.0f) << 20;
+    key ^= (u64)(info.max_lod * 256.0f) << 32;
+    key ^= (u64)(info.anisotropy) << 44;
+    key ^= (u64)(info.lod_bias * 256.0f) << 48;
+    return key;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Sampler creation / retrieval
+// ═══════════════════════════════════════════════════════════
+//
+// Creates MTLSamplerState from Maxwell TSC parameters, cached
+// by key derived from all sampler fields.
+
+id<MTLSamplerState> TextureCache::GetOrCreateSampler(const SamplerInfo& info) {
+    u64 key = MakeSamplerKey(info);
+
+    // Check cache
+    {
+        std::lock_guard l(mutex_);
+        auto it = sampler_cache_.find(key);
+        if (it != sampler_cache_.end()) return it->second;
+    }
+
+    // ── Create new MTLSamplerState ───────────────────────
+    MTLSamplerDescriptor* desc = [[MTLSamplerDescriptor alloc] init];
+
+    // Min filter (mip filter derived from min_filter as well)
+    switch (info.min_filter) {
+    case 0: // Nearest
+        desc.minFilter = MTLSamplerMinMagFilterNearest;
+        desc.mipFilter = MTLSamplerMipFilterNearest;
+        break;
+    case 1: // Linear
+        desc.minFilter = MTLSamplerMinMagFilterLinear;
+        desc.mipFilter = MTLSamplerMipFilterLinear;
+        break;
+    default:
+        desc.minFilter = MTLSamplerMinMagFilterNearest;
+        desc.mipFilter = MTLSamplerMipFilterNearest;
+    }
+
+    // Mag filter
+    switch (info.mag_filter) {
+    case 0: desc.magFilter = MTLSamplerMinMagFilterNearest; break;
+    case 1: desc.magFilter = MTLSamplerMinMagFilterLinear;  break;
+    default: desc.magFilter = MTLSamplerMinMagFilterNearest;
+    }
+
+    // Wrap modes (Maxwell → Metal)
+    auto toMtlWrap = [](u32 m) -> MTLSamplerAddressMode {
+        switch (m) {
+        case 0:  return MTLSamplerAddressModeRepeat;
+        case 1:  return MTLSamplerAddressModeMirrorRepeat;
+        case 2:  return MTLSamplerAddressModeClampToEdge;
+        case 3:  return MTLSamplerAddressModeClampToBorderColor;
+        case 4:  return MTLSamplerAddressModeClampToEdge;
+        case 5:  return MTLSamplerAddressModeMirrorClampToEdge;
+        default: return MTLSamplerAddressModeClampToEdge;
+        }
+    };
+    desc.sAddressMode = toMtlWrap(info.wrap_u);
+    desc.tAddressMode = toMtlWrap(info.wrap_v);
+    desc.rAddressMode = toMtlWrap(info.wrap_w);
+
+    // LOD clamping
+    desc.lodMinClamp = info.min_lod;
+    desc.lodMaxClamp = info.max_lod;
+    desc.lodBias = info.lod_bias;
+
+    // Anisotropy (Maxwell: 0 = off, 1-4 = 2^value x)
+    if (info.anisotropy > 0 && info.anisotropy <= 4) {
+        static const u32 aniso_table[] = {1, 2, 4, 8, 16};
+        desc.maxAnisotropy = aniso_table[info.anisotropy];
+    }
+
+    id<MTLSamplerState> sampler = [device_ newSamplerStateWithDescriptor:desc];
+    [desc release];
+
+    if (sampler) {
+        std::lock_guard l(mutex_);
+        sampler_cache_[key] = sampler;
+    }
+
+    return sampler;
+}
+
+// ═══════════════════════════════════════════════════════════
 // Sampler/Texture Pool Parsing
 // ═══════════════════════════════════════════════════════════
 //
@@ -968,5 +1066,9 @@ void TextureCache::Flush() {
     }
     entries_.clear();
     total_memory_ = 0;
+    for (auto& [key, sampler] : sampler_cache_) {
+        [sampler release];
+    }
+    sampler_cache_.clear();
     LOG_DEBUG("TextureCache: flushed");
 }
