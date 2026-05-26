@@ -198,9 +198,10 @@ Result EmulatorCore::Run() {
     main_thread->tls_base = TLS_SLOTS_BASE;
     main_thread->priority = 0x10;
 
-    memory_.MapPhysical(main_thread->tls_base, TLS_PER_THREAD, Memory::Permission::RW);
+    // TLS 映射必须 PAGE_SIZE(0x1000) 对齐，MapPhysical 拒绝非对齐请求
+    memory_.MapPhysical(main_thread->tls_base, 0x1000, Memory::Permission::RW);
     auto* tls = memory_.Pointer(main_thread->tls_base);
-    if (tls) std::memset(tls, 0, TLS_PER_THREAD);
+    if (tls) std::memset(tls, 0, 0x1000);
 
     u32 main_handle = handles_.Create(main_thread);
 
