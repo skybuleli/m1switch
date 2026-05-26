@@ -74,9 +74,17 @@ TEST(StateTracker_FullPipeline) {
     size_t consumed = tracker.PushBuffer(pushbuffer);
     CHECK_EQ(3, consumed);
 
+    // State was applied
     const auto& state = tracker.GetState3D();
     CHECK(state.rasterizer_enable);
-    CHECK_EQ(123, state.draw_arrays_count);
+    CHECK(tracker.IsDirty());
+
+    // Draw was enqueued (counts reset at enqueue time for batching)
+    CHECK(tracker.HasPendingDraws());
+    auto draws = tracker.ConsumeDraws();
+    CHECK_EQ(1, draws.size());
+    CHECK_EQ(123, draws[0].arrays_count);
+    CHECK_EQ(0, state.draw_arrays_count);  // reset after enqueue
 
     return true;
 }

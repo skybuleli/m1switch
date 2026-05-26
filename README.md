@@ -58,9 +58,38 @@ cmake --build build
 - [x] Build system (CMake)
 - [x] Logging infrastructure
 - [x] Configuration system
-- [ ] MTKView window
-- [ ] Metal device initialization
-- [ ] AppKit application skeleton
+- [x] MTKView window
+- [x] Metal device initialization
+- [x] AppKit application skeleton
+- [x] EmulatorCore orchestrator
+- [x] SVC dispatch with IPC forwarding
+- [x] Scheduler with guest thread execution
+- [x] Agent 规则文件 (AGENT.md)
+
+**Phase 1** — CPU & Memory (In Progress)
+- [x] Memory mapping (mach_vm, 4GB UMA)
+- [x] Native ARM64 execution (Patch-and-Trap)
+- [x] SVC handler table (80+ SVCs)
+- [x] NRO loader with relocations
+- [x] Multi-threaded guest execution
+- [x] Thread scheduler with proper synchronization
+
+**Phase 2** — GPU (In Progress)
+- [x] Maxwell register definitions
+- [x] GPFifo pushbuffer parser
+- [x] Engine3D state machine
+- [x] Maxwell shader decoder
+- [x] SPIR-V emitter
+- [x] Metal backend (device + renderer)
+- [x] Full shader pipeline (Maxwell → SPIR-V → MSL)
+- [x] Render to framebuffer
+- [x] P0 #1-2: 服务 HLE 补全 (Fs/Nv/Am/Account/Set/Sm + command ID修复)
+- [x] P0 #3: Draw Call 触发通路 (Engine3D→StateTracker→MetalRenderer)
+- [x] P0 #4: Shader 控制流 CFG (SSY/SYNC→SelectionMerge/LoopMerge)
+- [x] Texture cache (TIC 绑定通路 + 纹理缓存层)
+- [x] P0 #6: SPIR-V 规范修复 (opcode/decoration/布局 → 9个 spirv-val 验证全部通过)
+- [x] P0 #7: Render-to-framebuffer (render targets from guest memory → Metal RT textures → screen blit)
+- [x] P0 #8: VBO cache (MTLBuffer reuse via guest-address-keyed cache for VBOs, IBOs & UBOs)
 
 ## License
 

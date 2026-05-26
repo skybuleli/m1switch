@@ -47,16 +47,17 @@ find_library(GAME_CONTROLLER_LIB GameController REQUIRED)
 find_library(CORE_AUDIO_LIB CoreAudio REQUIRED)
 find_library(AUDIO_TOOLBOX_LIB AudioToolbox REQUIRED)
 find_library(IOKIT_LIB IOKit REQUIRED)
+find_library(CARBON_LIB Carbon REQUIRED)
 find_library(UNIFORM_TYPE_ID_LIB UniformTypeIdentifiers REQUIRED)
 
 mark_as_advanced(
     FOUNDATION_LIB APPKIT_LIB METAL_LIB METALKIT_LIB
     CORE_VIDEO_LIB GAME_CONTROLLER_LIB
-    CORE_AUDIO_LIB AUDIO_TOOLBOX_LIB IOKIT_LIB
+    CORE_AUDIO_LIB AUDIO_TOOLBOX_LIB IOKIT_LIB CARBON_LIB
 )
 
 # ── Third-party dependencies ──────────────────────────────────
-option(M1SWITCH_USE_SPIRV "Use SPIRV-Cross + SPIRV-Tools" OFF)
+option(M1SWITCH_USE_SPIRV "Use SPIRV-Cross + SPIRV-Tools" ON)
 
 if(M1SWITCH_USE_SPIRV)
     if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/SPIRV-Cross/CMakeLists.txt")
@@ -91,21 +92,34 @@ target_link_libraries(m1switch_core PUBLIC m1switch_common PRIVATE ${FOUNDATION_
 file(GLOB_RECURSE GPU_SRCS
     src/gpu/*.cpp src/gpu/*.mm
     src/gpu/maxwell/*.cpp
-    src/gpu/shader/*.cpp src/gpu/shader/ir/*.cpp src/gpu/shader/emit/*.cpp
+    src/gpu/shader/*.cpp src/gpu/shader/*.mm src/gpu/shader/ir/*.cpp src/gpu/shader/emit/*.cpp
     src/gpu/backend/*.mm src/gpu/backend/*.cpp
     src/gpu/engine/*.cpp
     src/gpu/texture/*.cpp
 )
 add_library(m1switch_gpu STATIC ${GPU_SRCS})
 target_include_directories(m1switch_gpu PUBLIC src PRIVATE third_party)
+if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/SPIRV-Cross/spirv_cross.hpp")
+    target_include_directories(m1switch_gpu PRIVATE "${CMAKE_SOURCE_DIR}/third_party/SPIRV-Cross")
+endif()
 target_link_libraries(m1switch_gpu
     PUBLIC m1switch_common
     PUBLIC ${METAL_LIB} ${METALKIT_LIB} ${CORE_VIDEO_LIB}
     PRIVATE ${FOUNDATION_LIB}
 )
-if(M1SWITCH_USE_SPIRV AND TARGET spirv-cross-core)
-    target_link_libraries(m1switch_gpu PUBLIC spirv-cross-core spirv-cross-msl)
-    target_compile_definitions(m1switch_gpu PRIVATE M1SWITCH_USE_SPIRV)
+if(M1SWITCH_USE_SPIRV)
+    if(TARGET spirv-cross-core)
+        target_link_libraries(m1switch_gpu PUBLIC spirv-cross-core spirv-cross-msl)
+        target_compile_definitions(m1switch_gpu PRIVATE M1SWITCH_USE_SPIRV)
+    endif()
+    if(TARGET SPIRV-Tools-static)
+        target_link_libraries(m1switch_gpu PUBLIC SPIRV-Tools-static)
+    endif()
+    # Add SPIRV-Headers include path from SPIRV-Tools
+    if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/SPIRV-Tools/external/spirv-headers")
+        target_include_directories(m1switch_gpu PRIVATE
+            "${CMAKE_SOURCE_DIR}/third_party/SPIRV-Tools/external/spirv-headers")
+    endif()
 endif()
 
 # ── Static library: m1switch_services ────────────────────────
@@ -124,7 +138,7 @@ target_link_libraries(m1switch_audio PUBLIC m1switch_common PRIVATE ${CORE_AUDIO
 file(GLOB_RECURSE INPUT_SRCS src/input/*.cpp src/input/*.mm)
 add_library(m1switch_input STATIC ${INPUT_SRCS})
 target_include_directories(m1switch_input PUBLIC src)
-target_link_libraries(m1switch_input PUBLIC m1switch_common PRIVATE ${GAME_CONTROLLER_LIB} ${IOKIT_LIB} ${FOUNDATION_LIB})
+target_link_libraries(m1switch_input PUBLIC m1switch_common PRIVATE ${GAME_CONTROLLER_LIB} ${IOKIT_LIB} ${CARBON_LIB} ${FOUNDATION_LIB})
 
 # ── Static library: m1switch_loader ──────────────────────────
 file(GLOB_RECURSE LOADER_SRCS src/loader/*.cpp src/loader/*.mm)
@@ -158,7 +172,10 @@ set_target_properties(m1switch PROPERTIES
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE_COPYRIGHT "MIT License"
     XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development"
-    XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME YES
+    # Hardened Runtime 会阻止 MAP_JIT / mach_vm / SIGTRAP 等核心操作
+    # 需要为正式分发添加 com.apple.security.cs.allow-jit 等 entitlement
+    # 开发阶段禁用
+    #XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME YES
 )
 
 # ── Tests ────────────────────────────────────────────────────
