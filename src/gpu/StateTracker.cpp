@@ -14,6 +14,27 @@ size_t StateTracker::PushBuffer(std::span<const u32> words) {
     return gpfifo_.Process(words);
 }
 
+// ── Pipeline key ────────────────────────────────────────────
+// Computes a hash of state that determines the Metal pipeline.
+// Draws sharing the same key can be batched in one encoder.
+u64 StateTracker::ComputePipelineKey(const GpuState3D& state) {
+    u64 key = state.program_region;
+    key ^= state.shaders[0].offset << 12;
+    key ^= state.shaders[5].offset << 24;
+    key ^= (u64)state.primitive_type << 8;
+    // Include RT configuration (format of active RTs)
+    for (u32 i = 0; i < MAX_RENDER_TARGETS; i++) {
+        if (state.rt[i].address != 0 && state.rt[i].width > 0) {
+            key ^= (u64)state.rt[i].format << (i * 4 + 40);
+        }
+    }
+    // Include depth format if enabled
+    if (state.depth_target.enabled) {
+        key ^= (u64)state.depth_target.format << 56;
+    }
+    return key;
+}
+
 // ── Method dispatch ─────────────────────────────────────────
 void StateTracker::OnMethod(u32 subch, u32 method, u32 value) {
     // Route to the appropriate engine based on subchannel
@@ -24,12 +45,32 @@ void StateTracker::OnMethod(u32 subch, u32 method, u32 value) {
         bool is_draw = false;
         engine_3d_.HandleMethod(method, value, is_draw);
 
-        // Mark dirty (Phase 5: map method → specific dirty bit)
+        // Mark dirty
         dirty_flags_ = 1;
 
         if (is_draw) {
-            LOG_INFO("Draw triggered: method=0x%x value=%u", method, value);
-            // Phase 5: submit draw to Metal backend
+            // Snapshot draw parameters and push to the queue
+            auto& st = engine_3d_.State();
+            PendingDraw draw;
+            draw.primitive_type  = st.primitive_type;
+            draw.arrays_first    = st.draw_arrays_first;
+            draw.arrays_count    = st.draw_arrays_count;
+            draw.elements_first  = st.draw_elements_first;
+            draw.elements_count  = st.draw_elements_count;
+            draw.index_addr      = st.index_buffer.address;
+            draw.index_format    = st.index_buffer.format;
+            draw.index_count     = st.index_buffer.count;
+            draw.pipeline_key    = ComputePipelineKey(st);
+
+            draw_queue_.push_back(draw);
+
+            // Reset live draw counts so they don't repeat
+            st.draw_arrays_count = 0;
+            st.draw_elements_count = 0;
+            st.index_buffer.count = 0;
+
+            LOG_INFO("Draw enqueued: method=0x%x value=%u (key=0x%llx, queue=%zu)",
+                     method, value, draw.pipeline_key, draw_queue_.size());
         }
         break;
     }

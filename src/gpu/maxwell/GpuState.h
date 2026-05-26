@@ -287,7 +287,6 @@ struct alignas(64) GpuState3D {
 
     // Clear
     ClearState       clear;
-    u32              clear_buffers_flags = 0;
 
     // Shaders
     ShaderState      shaders[MAX_SHADER_STAGES];

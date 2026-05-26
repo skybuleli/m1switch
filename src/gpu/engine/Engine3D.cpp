@@ -138,6 +138,18 @@ void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
         state_.depth_target.format = static_cast<DepthFormat>(value);
         break;
 
+    case Method3D::DepthTargetHorizontal:
+        state_.depth_target.width = value;
+        break;
+
+    case Method3D::DepthTargetVertical:
+        state_.depth_target.height = value;
+        break;
+
+    case Method3D::DepthTargetArrayMode:
+        state_.depth_target.tile_mode = value;
+        break;
+
     case Method3D::DepthTargetEnable:
         state_.depth_target.enabled = (value != 0);
         break;
@@ -227,7 +239,7 @@ void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
         break;
 
     case Method3D::ClearBuffers:
-        state_.clear_buffers_flags = value;
+        state_.clear.buffers = value;
         // Triggers a clear operation (handled in Metal backend)
         break;
 
@@ -280,15 +292,21 @@ void Engine3D::HandleMethod(u32 method, u32 value, bool& is_draw) {
 // from the method offset within the array.
 
 void Engine3D::HandleRenderTarget(u32 index, u32 value) {
-    // RenderTarget registers are at 0x200 + i * 0x10
-    // Each RT has: Addr, H, V, Format, TileMode, ArrayMode, LayerStride, BaseLayer
+    // RenderTarget registers are at 0x200 + i * 0x10 (i=0..7)
+    // Each RT entry has 8 sub-registers:
+    //   0: Address (low 32 bits), 1: Width (H), 2: Height (V),
+    //   3: Format, 4: TileMode, 5: ArrayMode, 6: LayerStride, 7: BaseLayer
     u32 i = index % 8;
-    u32 sub = index / 8;  // Sub-register within the RT entry
+    u32 sub = index / 8;
     switch (sub) {
-    case 0: state_.rt[i].address = (state_.rt[i].address & ~0xFFFFFFFFULL) | value; break;
-    case 1: break; // Horizontal (not stored directly)
-    case 2: break; // Vertical
-    case 3: state_.rt[i].format = static_cast<RtFormat>(value); break;
+    case 0: state_.rt[i].address   = (state_.rt[i].address & ~0xFFFFFFFFULL) | value; break;
+    case 1: state_.rt[i].width     = value; break;
+    case 2: state_.rt[i].height    = value; break;
+    case 3: state_.rt[i].format    = static_cast<RtFormat>(value); break;
+    case 4: state_.rt[i].tile_mode = value; break;
+    case 5: state_.rt[i].array_mode = value; break;
+    case 6: state_.rt[i].layer_stride = value; break;
+    case 7: state_.rt[i].base_layer = value; break;
     default: break;
     }
 }
