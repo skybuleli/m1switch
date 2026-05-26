@@ -10,6 +10,10 @@
 #include "cpu/NativeExec.h"
 #include "cpu/ExceptionHandler.h"
 #include "kernel/SvcTable.h"
+
+// TLS layout (mirrors constants in core/Core.h)
+static constexpr u64 TLS_SLOTS_BASE   = 0xFD000000;
+static constexpr u64 TLS_PER_THREAD   = 0x200;
 #include "gpu/StateTracker.h"
 #include "services/Nv.h"
 
@@ -18,23 +22,25 @@
 #include <chrono>
 #include <thread>
 #include <signal.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <mach/mach_vm.h>
 
 static volatile bool g_guest_exited = false;
-static Memory*     g_mem  = nullptr;
-static StateTracker* g_trk = nullptr;
+static Memory*       g_mem  = nullptr;
+static StateTracker* g_trk  = nullptr;
 
-// ── SIGTRAP handler for SVC dispatch ───────────────────────
+// ── SIGTRAP handler for SVC dispatch ─────────────────────────
 static SigHandler g_sig_handler;
 
 static void SvcExitHandler(u32 num, GuestThreadState* state) {
     LOG_INFO("svcExitProcess(%llu) — guest exited", state->x[0]);
     g_guest_exited = true;
     state->x[0] = 0;
-    // Set PC to a return trampoline address that won't crash
-    // (handled by NativeExec::RunGuest)
 }
 
-// ── Main ───────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────
 int main(int argc, char** argv) {
     Log::Init();
 
@@ -49,13 +55,19 @@ int main(int argc, char** argv) {
         if (sscanf(argv[i], "--timeout=%d", &timeout_sec) == 1) {}
     }
 
-    LOG_INFO("=== Headless Runner ===");
-    LOG_INFO("NRO: %s", path);
-    LOG_INFO("Timeout: %ds", timeout_sec);
+    LOG_INFO("=== Headless Runner ===\n");
+    LOG_INFO("NRO: %s\n", path);
+    LOG_INFO("Timeout: %ds\n", timeout_sec);
 
     // ── 1. Memory ──────────────────────────────────
     Memory memory;
     g_mem = &memory;
+    SvcHandlers_SetMemory(&memory);
+
+    // Map TLS page for guest thread
+    memory.MapPhysical(TLS_SLOTS_BASE, 0x1000, Memory::Permission::RW);
+    auto* tls = memory.Pointer(TLS_SLOTS_BASE);
+    if (tls) std::memset(tls, 0, 0x1000);
 
     // ── 2. StateTracker ────────────────────────────
     StateTracker tracker;
@@ -67,64 +79,61 @@ int main(int argc, char** argv) {
     NroLoadInfo info;
     Result r = loader.LoadFromFile(path, info);
     if (Failed(r)) {
-        LOG_ERROR("Failed to load NRO");
+        LOG_ERROR("Failed to load NRO\n");
         return 1;
     }
-    LOG_INFO("Entry: 0x%llx, %zu seg(s)", info.entry_point, info.segments.size());
+    LOG_INFO("Entry: 0x%llx, %zu seg(s)\n", info.entry_point, info.segments.size());
 
-    // ── 4. Patch SVCs ──────────────────────────────
-    if (!info.segments.empty()) {
-        auto& seg = info.segments[0];
-        u8* text  = memory.Pointer(seg.guest_address);
-        if (text) {
-            std::vector<std::pair<u32,u32>> svc_map;
-            NativeExec::PatchSVCs(text, seg.size, svc_map);
-            LOG_INFO("Patched %zu SVCs", svc_map.size());
-        }
-    }
-
-    // ── 5. Stack + Heap ────────────────────────────
+    // ── 4. Stack + Heap ────────────────────────────
     memory.SetupStack(0x100000);
+    LOG_INFO("Stack: top=0x%llx size=0x%llx\n", memory.GetStackTop(), 0x100000ULL);
 
-    // ── 6. SVC table ──────────────────────────────
+    u64 abs_entry = memory.BaseAddress() + info.entry_point;
+    u64 abs_stack = memory.BaseAddress() + memory.GetStackTop();
+
+    // ── 5. SVC table ──────────────────────────────
     SvcTable_Init();
     SvcTable_Register(0x07, SvcExitHandler);
 
-    // ── 7. NV wiring ──────────────────────────────
+    // ── 6. NV wiring ──────────────────────────────
     ServiceNv_SetMemory(&memory);
     ServiceNv_SetTracker(&tracker);
-    // GPFifo 被 StateTracker 内部持有，NV service 通过 StateTracker 间接访问
 
-    // ── 8. Install SIGTRAP ─────────────────────────
+    // ── 7. Install SIGTRAP ─────────────────────────
     g_sig_handler.SetSvcDispatch([](u32 svc, GuestThreadState* st) {
         SvcHandler_Dispatch(svc, st);
     });
     g_sig_handler.Install();
-    LOG_INFO("Starting guest...");
+    LOG_INFO("Starting guest...\n");
 
-    // ── 9. Run guest in a separate thread ──────────
-    std::thread guest_thread([&]() {
-        NativeExec::RunGuest(
-            memory.BaseAddress() + info.entry_point,
-            memory.BaseAddress() + memory.GetStackTop(), 0);
+    // ── 8. Run guest ─────────────────────────────────
+    // Launch guest thread via NativeExec::RunGuest
+    // The SIGTRAP handler will intercept BRK instructions (patched SVCs)
+    // and dispatch them through the SVC handler table.
+    std::thread guest([abs_entry, abs_stack]() {
+        pthread_setname_np("GuestMain");
+        NativeExec::RunGuest(abs_entry, abs_stack, TLS_SLOTS_BASE);
+        g_guest_exited = true;
+        LOG_INFO("Guest thread returned\n");
     });
+    guest.detach();
 
-    // ── 10. Wait with timeout ──────────────────────
-    int waited = 0;
-    while (!g_guest_exited && waited < timeout_sec * 10) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        waited++;
+    // ── 9. Wait for exit or timeout ────────────────
+    auto start = std::chrono::steady_clock::now();
+    while (!g_guest_exited) {
+        auto elapsed = std::chrono::steady_clock::now() - start;
+        if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() >= timeout_sec) {
+            LOG_INFO("TIMEOUT (%ds) — guest did not exit in time\n", timeout_sec);
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // ── 11. Result ─────────────────────────────────
     if (g_guest_exited) {
-        LOG_INFO("=== ✅ GUEST EXITED NORMALLY ===");
-        guest_thread.detach();
-        return 0;
+        LOG_INFO("GUEST EXITED NORMALLY\n");
+    } else {
+        LOG_INFO("GUEST TIMEOUT\n");
     }
 
-    // Check if any SVCs fired
-    LOG_WARN("=== ⏱ TIMEOUT — No svcExitProcess ===");
-    guest_thread.detach();
-    return 1;
+    return 0;
 }

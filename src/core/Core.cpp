@@ -5,6 +5,8 @@
 #include "services/Ipc.h"
 #include "services/Nv.h"
 #include "loader/NsoLoader.h"
+#include "debug/TraceEngine.h"
+#include "debug/DebugServer.h"
 
 extern "C" {
 void Input_Initialize();
@@ -22,6 +24,15 @@ EmulatorCore::~EmulatorCore() { Stop(); }
 
 Result EmulatorCore::Initialize() {
     LOG_INFO("EmulatorCore: initializing...");
+
+    // ── 初始化追踪和调试服务器 ────────────────────────
+    TraceEngine::Instance().EnableChannel(TraceChannel::SVC, true);
+    TraceEngine::Instance().EnableChannel(TraceChannel::IPC, true);
+    TraceEngine::Instance().EnableChannel(TraceChannel::THREAD, true);
+    LOG_INFO("TraceEngine: SVC/IPC/THREAD 通道已启用");
+
+    DebugServer::Instance().Start();
+    LOG_INFO("DebugServer: 已启动 (/tmp/m1switch_debug.sock)");
 
     InitKernel();
     InitServices();
@@ -192,6 +203,8 @@ void EmulatorCore::Stop() {
     handles_.CloseAll();
     Input_Shutdown();
     Audio_Shutdown();
+    DebugServer::Instance().Stop();
+    TraceEngine::Instance().Flush();
 }
 
 void EmulatorCore::Pause() {

@@ -3,6 +3,8 @@
 #include <mach/mach.h>
 
 extern "C" void GuestTrampoline(u64 entry_point, u64 stack_top);
+extern "C" void GuestTrampoline_Minimal(u64 entry_point, u64 stack_top);
+extern "C" void GuestTrampoline_NoZero(u64 entry_point, u64 stack_top);
 
 Result NativeExec::PatchSVCs(u8* code, u64 size,
                               std::vector<std::pair<u32, u32>>& out_map) {
@@ -32,4 +34,29 @@ void NativeExec::RunGuest(u64 abs_entry, u64 abs_stack, u64 tls_base) {
     GuestTrampoline(abs_entry, abs_stack);
 
     LOG_ERROR("GuestTrampoline returned — should not happen");
+}
+
+// ── Diagnostic variants for crash isolation ────────────────
+
+// Test 1: minimal trampoline — just br x0, no SP/register changes
+void NativeExec::RunGuest_Minimal(u64 abs_entry, u64 abs_stack) {
+    LOG_INFO("DIAG_GUEST: Minimal (br x0 only) PC=0x%llx", abs_entry);
+    GuestTrampoline_Minimal(abs_entry, abs_stack);
+    LOG_ERROR("DIAG_GUEST: Minimal returned!");
+}
+
+// Test 2: SP change only, no register clearing
+void NativeExec::RunGuest_NoZero(u64 abs_entry, u64 abs_stack) {
+    LOG_INFO("DIAG_GUEST: NoZero (SP + br) PC=0x%llx SP=0x%llx", abs_entry, abs_stack);
+    GuestTrampoline_NoZero(abs_entry, abs_stack);
+    LOG_ERROR("DIAG_GUEST: NoZero returned!");
+}
+
+// Test 3: full trampoline but with direct br x0 instead of br x30
+// (to test if mov x30, x0 + br x30 vs br x0 matters)
+extern "C" void GuestTrampoline_FullDirect(u64 entry_point, u64 stack_top);
+void NativeExec::RunGuest_FullDirect(u64 abs_entry, u64 abs_stack) {
+    LOG_INFO("DIAG_GUEST: FullDirect PC=0x%llx SP=0x%llx", abs_entry, abs_stack);
+    GuestTrampoline_FullDirect(abs_entry, abs_stack);
+    LOG_ERROR("DIAG_GUEST: FullDirect returned!");
 }

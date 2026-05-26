@@ -25,7 +25,7 @@ add_executable(test_gpu_parser
     unit/test_gpu_parser.cpp
 )
 target_link_libraries(test_gpu_parser
-    m1switch_gpu m1switch_common
+    m1switch_gpu m1switch_core m1switch_common
 )
 add_test(NAME GpuParser COMMAND test_gpu_parser)
 
@@ -47,7 +47,7 @@ add_executable(test_texture_cache
 )
 target_include_directories(test_texture_cache PRIVATE ..)
 target_link_libraries(test_texture_cache
-    m1switch_gpu m1switch_common
+    m1switch_gpu m1switch_core m1switch_common
 )
 add_test(NAME TextureCache COMMAND test_texture_cache)
 

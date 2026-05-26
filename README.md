@@ -156,7 +156,7 @@ cmake --build build
 - [x] GPU parser tests
 - [x] Headless runner (CI-capable)
 
-**Phase 8** — Debugger & Automation (New)
+**Phase 8** — Debugger & Automation (In Progress)
 - [x] EmuDebugger: Breakpoint manager (set/clear/list at guest addresses)
 - [x] EmuDebugger: CPU register capture (x0-x30, SP, PC, PState)
 - [x] EmuDebugger: Memory read/write API
@@ -170,6 +170,16 @@ cmake --build build
 - [x] volt-agent: manifest.json test definitions
 - [x] volt-agent: JSON report output (CI-ready)
 - [x] volt-agent: Watch mode for development
+- [x] TraceEngine: 全链路追踪 (SVC/IPC/GPU/Thread 通道, mmap 环形缓冲, 零分配写入)
+- [x] TraceEngine: 通道级开关 + 过滤器 + JSON 查询接口
+- [x] TraceEngine: SVC 调度双向追踪 (进入+返回值)
+- [x] TraceEngine: IPC 请求/响应追踪
+- [x] TraceEngine: GPU Draw Call 追踪 (方法+管线键)
+- [x] TraceEngine: Thread 生命周期追踪 (create/start/exit)
+- [x] DebugServer: Unix domain socket 调试接口 (/tmp/m1switch_debug.sock)
+- [x] DebugServer: JSON-RPC 命令协议 (break/continue/step/regs/read/write/trace/snap/stats)
+- [x] SnapshotManager: 完整状态快照 (CPU 寄存器 + SVC 历史)
+- [x] SnapshotManager: 自动快照 (按 SVC 间隔或帧间隔)
 
 ## License
 

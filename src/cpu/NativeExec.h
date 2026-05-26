@@ -19,4 +19,9 @@ public:
 
     // Jump to guest code. Addresses must be ABSOLUTE host VAs.
     static void RunGuest(u64 abs_entry_point, u64 abs_stack_top, u64 tls_base);
+
+    // ── Diagnostic variants for crash isolation ──────────
+    static void RunGuest_Minimal(u64 abs_entry, u64 abs_stack);
+    static void RunGuest_NoZero(u64 abs_entry, u64 abs_stack);
+    static void RunGuest_FullDirect(u64 abs_entry, u64 abs_stack);
 };

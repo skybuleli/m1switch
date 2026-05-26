@@ -1,5 +1,6 @@
 #include "services/Ipc.h"
 #include "common/Log.h"
+#include "debug/TraceEngine.h"
 #include <cstring>
 #include <algorithm>
 
@@ -75,13 +76,19 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     size_t total_buf_size = *resp_size;
     *resp_size = sizeof(IpcResponse);
 
-    if (session->service) {
+if (session->service) {
         // Raw data is after the header
         const u8* raw_in = data + sizeof(IpcRequest);
         size_t raw_in_size = (size > sizeof(IpcRequest)) ? size - sizeof(IpcRequest) : 0;
         u8* raw_out = response + sizeof(IpcResponse);
         size_t raw_out_max = (total_buf_size > sizeof(IpcResponse))
                             ? total_buf_size - sizeof(IpcResponse) : 0;
+
+        // ── IPC 追踪：记录请求 ──────────────────────────────
+        TRACE_IPC(req->cmd_id,
+                   (u64)session_handle,
+                   raw_in_size > 0 ? *((const u64*)raw_in) : 0,
+                   0);
 
         bool handled = session->service->HandleCommand(
             req->cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
@@ -95,6 +102,12 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
             resp->result = 1;  // Unhandled
             *resp_size = sizeof(IpcResponse);
         }
+
+        // ── IPC 追踪：记录响应 ──────────────────────────────
+        TRACE_IPC(req->cmd_id | 0x8000,
+                  (u64)session_handle,
+                  (u64)resp->result,
+                  (u64)handled);
     } else {
         LOG_TRACE("IPC: session 0x%x ('%s') has no handler", session_handle,
                  session->service_name.c_str());

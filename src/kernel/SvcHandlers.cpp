@@ -4,6 +4,7 @@
 #include "memory/Memory.h"
 #include "cpu/NativeExec.h"
 #include "services/Ipc.h"
+#include "debug/TraceEngine.h"
 #include <mach/mach_time.h>
 #include <ctime>
 
@@ -154,6 +155,8 @@ SVC(SvcCreateThread) {
               handle, t->thread_id, entry, t->stack_top, t->kernel_stack);
     state->x[1] = handle;
     Ret(state, 0);
+
+    TRACE_THREAD(THREAD_CREATE, (u64)handle, (u64)t->thread_id);
 }
 
 SVC(SvcStartThread) {
@@ -182,10 +185,13 @@ SVC(SvcStartThread) {
         LOG_INFO("Guest thread %llu started: PC=0x%llx SP=0x%llx",
                  t->thread_id, t->entry_point, t->stack_top);
 
+        TRACE_THREAD(THREAD_START, (u64)t->thread_id, t->entry_point);
+
         NativeExec::RunGuest(t->entry_point, t->stack_top, t->tls_base);
 
         t->running.store(false);
         t->MarkFinished();
+        TRACE_THREAD(THREAD_EXIT, (u64)t->thread_id, 0);
         LOG_INFO("Guest thread %llu exited", t->thread_id);
     });
     t->host_thread = std::move(host);

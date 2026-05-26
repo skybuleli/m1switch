@@ -46,6 +46,10 @@ static u64 Read64(const u8* buf, size_t sz, u64 off) {
            ((u64)buf[off+6]<<48) | ((u64)buf[off+7]<<56);
 }
 
+static u64 AlignUp(u64 val, u64 align) {
+    return (val + align - 1) & ~(align - 1);
+}
+
 NroLoader::NroLoader(Memory& memory) : memory_(memory) {}
 
 // ── Parse header ────────────────────────────────────────────
@@ -73,59 +77,6 @@ bool NroLoader::ParseHeader(std::span<const u8> buffer,
         std::memcpy(header.build_id, buffer.data() + header_off_ + 0x30, 32);
 
     return header.magic == NRO0_MAGIC;
-}
-
-// ── Apply relocations ───────────────────────────────────────
-// Called after segments are mapped into guest memory.
-static void ApplyRelocations(const u8* buf, size_t buf_sz,
-                              const Elf64_Rela* relas, u64 nrelas,
-                              const Elf64_Sym* symtab, u64 nsyms,
-                              const char* strtab,
-                              u64 base_addr,  // guest address of .text
-                              Memory& mem) {
-    LOG_INFO("Applying %llu relocations (base=0x%llx)", (u64)nrelas, base_addr);
-
-    for (u64 ri = 0; ri < nrelas; ri++) {
-        u64 type = relas[ri].info & 0xFFFFFFFF;
-        u64 sym  = relas[ri].info >> 32;
-        u64 off  = relas[ri].off;   // offset from text base
-        s64 add  = relas[ri].add;   // addend
-        u64 tgt  = base_addr + off; // guest address to patch
-
-        if (off >= buf_sz) {
-            LOG_WARN("Reloc %llu: offset 0x%llx exceeds buffer", ri, off);
-            continue;
-        }
-
-        switch (type) {
-        case R_AARCH64_RELATIVE: {
-            // B + A: base address + addend
-            u64 val = base_addr + add;
-            mem.Write(tgt, val);
-            break;
-        }
-        case R_AARCH64_ABS64: {
-            // S + A
-            if (sym < nsyms) {
-                u64 s_val = symtab[sym].val + add;
-                mem.Write(tgt, s_val);
-            }
-            break;
-        }
-        case R_AARCH64_GLOB_DAT:
-            // S + A (same as ABS64 in practice)
-            if (sym < nsyms) {
-                u64 s_val = symtab[sym].val;
-                if (add) s_val += add;
-                mem.Write(tgt, s_val);
-            }
-            break;
-        default:
-            LOG_WARN("Unsupported reloc type %llu", type);
-            break;
-        }
-    }
-    LOG_INFO("Relocations applied");
 }
 
 // ── Load from file ──────────────────────────────────────────
@@ -162,12 +113,6 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
     hex[64] = '\0';
     info.build_id = hex;
 
-    // text_start from NRO header is an ABSOLUTE file offset (points to where .text begins
-    // in the NRO file. The NRO0 header starts at file offset 0x10, but the text_start field
-    // in the header references the ENTIRE NRO file, not an offset relative to the header.
-    // E.g., text_start=0x110 → the .text section starts at file offset 0x110.
-    // All segment offsets in the NRO0 header are ABSOLUTE file offsets.
-    // text_start was already fixed — now align rodata and data to match.
     u32 text_start   = header.text_start;
     u32 text_size    = header.text_size;
     u32 rodata_start = header.rodata_start;
@@ -199,145 +144,152 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         LOG_INFO("MOD0: dyn_off=0x%x (abs=0x%x)", dyn_off, mod0_off + dyn_off);
     }
 
-    // ── Map segments ────────────────────────────────────
-    u64 addr = NRO_TEXT_BASE;
+    // ── Parse dynamic section (before mapping, so we have relocation info) ──
+    struct DynInfo {
+        u64 rela_off = 0, rela_sz = 0, rela_ent = 0;
+        u64 symtab_off = 0, strtab_off = 0, strtab_sz = 0;
+    } dyn;
 
-    // .text → RW (will switch to RX after patching + relocation)
-    {
-        u64 sz = AlignUp<u64>(text_size, 0x1000);
-        Result r = memory_.MapPhysical(addr, sz, Memory::Permission::RW,
-                                        buffer.data() + text_start);
-        if (Failed(r)) return r;
-
-        // Patch SVCs and apply relocations while writable
-        u8* ptr = memory_.Pointer(addr);
-        if (ptr) {
-            std::vector<std::pair<u32,u32>> svc_map;
-            NativeExec::PatchSVCs(ptr, text_size, svc_map);
-            LOG_INFO("Patched %zu SVCs", svc_map.size());
-        }
-
-        memory_.Protect(addr, sz, Memory::Permission::RX);
-        info.segments.push_back({text_start, text_size, addr, Memory::Permission::RX});
-        addr += sz;
-    }
-
-    // .rodata → R
-    if (rodata_size > 0) {
-        u64 sz = AlignUp<u64>(rodata_size, 0x1000);
-        Result r = memory_.MapPhysical(addr, sz, Memory::Permission::R,
-                                        buffer.data() + rodata_start);
-        if (Failed(r)) return r;
-        info.segments.push_back({rodata_start, rodata_size, addr, Memory::Permission::R});
-        addr += sz;
-    }
-
-    // .data → RW
-    if (data_size > 0) {
-        u64 sz = AlignUp<u64>(data_size, 0x1000);
-        Result r = memory_.MapPhysical(addr, sz, Memory::Permission::RW,
-                                        buffer.data() + data_start);
-        if (Failed(r)) return r;
-        info.segments.push_back({data_start, data_size, addr, Memory::Permission::RW});
-        addr += sz;
-    }
-
-    // .bss → RW
-    if (bss_size > 0) {
-        u64 sz = AlignUp<u64>(bss_size, 0x1000);
-        Result r = memory_.MapPhysical(addr, sz, Memory::Permission::RW);
-        if (Failed(r)) return r;
-        auto* ptr = memory_.Pointer(addr);
-        if (ptr) std::memset(ptr, 0, bss_size);
-        info.bss_address = addr;
-        info.bss_size = bss_size;
-    }
-
-    // ── Parse dynamic section and apply relocations ────
     if (dyn_off > 0) {
-        u32 dyn_abs = mod0_off + dyn_off;  // absolute file offset
+        u32 dyn_abs = mod0_off + dyn_off;
         if (dyn_abs + 16 <= buffer.size()) {
-            // Count DYNS
             int ndyns = 0;
             while (dyn_abs + (ndyns+1)*16 <= buffer.size()) {
                 s64 tag = (s64)Read64(buffer.data(), buffer.size(), dyn_abs + ndyns*16);
                 if (tag == DT_NULL) break;
                 ndyns++;
             }
-            LOG_INFO("DT_NULL at dyn[%d], %d entries", ndyns, ndyns);
-
-            // Extract key entries
-            u64 rela_off = 0, rela_sz = 0, rela_ent = 0;
-            u64 symtab_off = 0, strtab_off = 0, strtab_sz = 0;
 
             for (int i = 0; i < ndyns; i++) {
                 s64 tag = (s64)Read64(buffer.data(), buffer.size(), dyn_abs + i*16);
                 u64 val = Read64(buffer.data(), buffer.size(), dyn_abs + i*16 + 8);
                 switch (tag) {
-                case DT_RELA:    rela_off  = val; break;
-                case DT_RELASZ:  rela_sz   = val; break;
-                case DT_RELAENT: rela_ent  = val; break;
-                case DT_SYMTAB:  symtab_off = val; break;
-                case DT_STRTAB:  strtab_off = val; break;
-                case DT_STRSZ:   strtab_sz = val; break;
+                case DT_RELA:    dyn.rela_off   = val; break;
+                case DT_RELASZ:  dyn.rela_sz    = val; break;
+                case DT_RELAENT: dyn.rela_ent   = val; break;
+                case DT_SYMTAB:  dyn.symtab_off = val; break;                case DT_STRTAB:   dyn.strtab_off = val; break;
+                case DT_STRSZ:    dyn.strtab_sz  = val; break;
                 }
-            }
-
-            LOG_INFO("DT: rela=0x%llx relasz=%llu symtab=0x%llx strtab=0x%llx sz=%llu",
-                     rela_off, rela_sz, symtab_off, strtab_off, strtab_sz);
-
-            // Apply relocations
-            if (rela_off > 0 && rela_sz > 0 && rela_ent >= 24) {
-                u64 rela_file_off = text_start + rela_off;
-                u64 nrelas = rela_sz / rela_ent;
-                u64 sym_file_off = symtab_off ? (text_start + symtab_off) : 0;
-                u64 str_file_off = strtab_off ? (text_start + strtab_off) : 0;
-                u64 nsyms = sym_file_off ? ((str_file_off - sym_file_off) / 24) : 0;
-
-                LOG_INFO("Applying %llu relocations...", nrelas);
-
-                u64 base_guest = NRO_TEXT_BASE;
-                u8* text_ptr = memory_.Pointer(NRO_TEXT_BASE);
-
-                for (u64 ri = 0; ri < nrelas && ri < 100000; ri++) {
-                    u64 ro = rela_file_off + ri * rela_ent;
-                    if (ro + 24 > buffer.size()) break;
-
-                    u64 r_off  = Read64(buffer.data(), buffer.size(), ro);
-                    u64 r_info = Read64(buffer.data(), buffer.size(), ro + 8);
-                    s64 r_add  = (s64)Read64(buffer.data(), buffer.size(), ro + 16);
-                    u64 type   = r_info & 0xFFFFFFFF;
-                    u64 sym    = r_info >> 32;
-
-                    u64 patch_addr = base_guest + r_off;
-
-                    switch (type) {
-                    case R_AARCH64_RELATIVE: {
-                        u64 val = base_guest + r_add;
-                        memory_.Write(patch_addr, val);
-                        break;
-                    }
-                    case R_AARCH64_ABS64:
-                    case R_AARCH64_GLOB_DAT: {
-                        if (sym_file_off && sym < nsyms) {
-                            u64 sym_off = sym_file_off + sym * 24;
-                            u64 s_val = Read64(buffer.data(), buffer.size(), sym_off + 8);
-                            if (type == R_AARCH64_ABS64) s_val += r_add;
-                            memory_.Write(patch_addr, s_val);
-                        }
-                        break;
-                    }
-                    }
-                }
-                LOG_INFO("Applied %llu relocations", nrelas);
             }
         }
     }
 
-    // Entry point: the .text segment is mapped at NRO_TEXT_BASE, so the entry is at its start.
-    // The NRO0 header and B-instruction preamble at the beginning of the file are NOT mapped.
-    // The first instruction of .text IS the entry point.
-    info.entry_point = NRO_TEXT_BASE;
+    // ── Map segments (all before relocations) ─────────────
+    u64 text_addr     = NRO_TEXT_BASE;
+    u64 text_page_sz  = AlignUp(static_cast<u64>(text_size), 0x1000);
+    u64 rodata_addr   = text_addr + text_page_sz;
+    u64 rodata_page_sz = AlignUp(static_cast<u64>(rodata_size), 0x1000);
+    u64 data_addr     = rodata_addr + rodata_page_sz;
+    u64 data_page_sz  = AlignUp(static_cast<u64>(data_size), 0x1000);
+    u64 bss_addr      = data_addr + data_page_sz;
+    u64 bss_page_sz   = AlignUp(static_cast<u64>(bss_size), 0x1000);
+
+    // 1. .text → RW (will switch to RX after patching)
+    {
+        Result r = memory_.MapPhysical(text_addr, text_page_sz, Memory::Permission::RW,
+                                        buffer.data() + text_start);
+        if (Failed(r)) return r;
+    }
+
+    // 2. .rodata → RW (will switch to R after relocations)
+    if (rodata_size > 0) {
+        Result r = memory_.MapPhysical(rodata_addr, rodata_page_sz, Memory::Permission::RW,
+                                        buffer.data() + rodata_start);
+        if (Failed(r)) return r;
+    }
+
+    // 3. .data → RW
+    if (data_size > 0) {
+        Result r = memory_.MapPhysical(data_addr, data_page_sz, Memory::Permission::RW,
+                                        buffer.data() + data_start);
+        if (Failed(r)) return r;
+    }
+
+    // 4. .bss → RW (zero-filled)
+    if (bss_size > 0) {
+        Result r = memory_.MapPhysical(bss_addr, bss_page_sz, Memory::Permission::RW);
+        if (Failed(r)) return r;
+        auto* ptr = memory_.Pointer(bss_addr);
+        if (ptr) std::memset(ptr, 0, bss_size);
+        info.bss_address = bss_addr;
+        info.bss_size = bss_size;
+    }
+
+    // ── Patch SVCs (while .text is still RW) ─────────────
+    {
+        u8* ptr = memory_.Pointer(text_addr);
+        if (ptr) {
+            std::vector<std::pair<u32,u32>> svc_map;
+            NativeExec::PatchSVCs(ptr, text_size, svc_map);
+            LOG_INFO("Patched %zu SVCs", svc_map.size());
+        }
+    }
+
+    // ── Apply relocations (all segments are now mapped) ──
+    if (dyn.rela_off > 0 && dyn.rela_sz > 0 && dyn.rela_ent >= 24) {
+        u64 rela_file_off = text_start + dyn.rela_off;
+        u64 nrelas = dyn.rela_sz / dyn.rela_ent;
+        u64 sym_file_off = dyn.symtab_off ? (text_start + dyn.symtab_off) : 0;
+        u64 str_file_off = dyn.strtab_off ? (text_start + dyn.strtab_off) : 0;
+        u64 nsyms = sym_file_off ? ((str_file_off - sym_file_off) / 24) : 0;
+
+        LOG_INFO("Applying %llu relocations...", (u64)nrelas);
+
+        for (u64 ri = 0; ri < nrelas && ri < 100000; ri++) {
+            u64 ro = rela_file_off + ri * dyn.rela_ent;
+            if (ro + 24 > buffer.size()) break;
+
+            u64 r_off  = Read64(buffer.data(), buffer.size(), ro);
+            u64 r_info = Read64(buffer.data(), buffer.size(), ro + 8);
+            s64 r_add  = (s64)Read64(buffer.data(), buffer.size(), ro + 16);
+            u64 type   = r_info & 0xFFFFFFFF;
+            u64 sym    = r_info >> 32;
+
+            u64 patch_addr = NRO_TEXT_BASE + r_off;
+
+            switch (type) {
+            case R_AARCH64_RELATIVE: {
+                u64 val = NRO_TEXT_BASE + r_add;
+                memory_.Write(patch_addr, val);
+                break;
+            }
+            case R_AARCH64_ABS64:
+            case R_AARCH64_GLOB_DAT: {
+                if (sym_file_off && sym < nsyms) {
+                    u64 sym_off = sym_file_off + sym * 24;
+                    u64 s_val = Read64(buffer.data(), buffer.size(), sym_off + 8);
+                    if (type == R_AARCH64_ABS64) s_val += r_add;
+                    memory_.Write(patch_addr, s_val);
+                }
+                break;
+            }
+            }
+        }
+        LOG_INFO("Applied %llu relocations", (u64)nrelas);
+    }
+
+    // ── Protect segments ─────────────────────────────
+    // .text → RX (no more writes)
+    memory_.Protect(text_addr, text_page_sz, Memory::Permission::RX);
+    // .rodata → R (no more writes after relocations)
+    if (rodata_size > 0) {
+        memory_.Protect(rodata_addr, rodata_page_sz, Memory::Permission::R);
+    }
+
+    // ── Record segments in info ──────────────────────────
+    if (text_size > 0)
+        info.segments.push_back({text_start, text_size, text_addr, Memory::Permission::RX});
+    if (rodata_size > 0)
+        info.segments.push_back({rodata_start, rodata_size, rodata_addr, Memory::Permission::R});
+    if (data_size > 0)
+        info.segments.push_back({data_start, data_size, data_addr, Memory::Permission::RW});
+
+    // NRO entry point: standard libnx convention is offset 0x100.
+    // The first 0x100 bytes contain the NRO0 header + build ID;
+    // actual executable code (CRT0 startup) starts at offset 0x100.
+    // DT_INIT may point to a different init function, but the entry
+    // point is always at offset 0x100 for homebrew NROs.
+    info.entry_point = NRO_TEXT_BASE + 0x100;
     LOG_INFO("Entry: 0x%llx (%zu segments)", info.entry_point, info.segments.size());
     return Result::Success;
 }

@@ -51,23 +51,15 @@ public:
     [[nodiscard]] u8* Pointer(u64 address) const;
     [[nodiscard]] bool IsValid(u64 address) const;
 
-    // Query memory region info (for svcQueryMemory)
-    // Returns {base, size, type} where type: 0=code, 1=rw, 2=r, 3=unmapped, 4=heap, 5=stack
     void QueryRegion(u64 address, u64& out_base, u64& out_size, u32& out_type) const;
     [[nodiscard]] void* BasePointer() const { return base_; }
     [[nodiscard]] mach_vm_address_t BaseAddress() const { return base_addr_; }
 
     void DumpPages() const;
 
-    // ── Write tracking ─────────────────────────────────────
-    // Write callback is called after every Write<T>() operation.
-    // BumpWriteStamp increments the global write version, which
-    // TextureCache uses to detect stale entries.
     using MemoryWriteCallback = std::function<void(u64 address, u64 size)>;
     void SetWriteCallback(MemoryWriteCallback cb) { write_callback_ = std::move(cb); }
 
-    // Bump the global write stamp. Call this when memory is modified
-    // outside of Write<T>() (e.g., GPU DMA, render target copies).
     void BumpWriteStamp() { write_stamp_++; }
     u64 GetWriteStamp() const { return write_stamp_; }
 

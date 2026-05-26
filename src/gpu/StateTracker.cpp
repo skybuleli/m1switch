@@ -1,5 +1,6 @@
 #include "gpu/StateTracker.h"
 #include "common/Log.h"
+#include "debug/TraceEngine.h"
 
 StateTracker::StateTracker() {
     // Set up GPFifo dispatch callback
@@ -84,6 +85,11 @@ void StateTracker::OnMethod(u32 subch, u32 method, u32 value) {
             st.draw_arrays_count = 0;
             st.draw_elements_count = 0;
             st.index_buffer.count = 0;
+
+            // ── GPU 追踪 ────────────────────────────────────
+            TRACE_GPU(method, (u64)draw.arrays_count,
+                      draw.pipeline_key,
+                      (u64)draw.elements_count);
 
             LOG_INFO("Draw enqueued: method=0x%x value=%u (key=0x%llx, queue=%zu)",
                      method, value, draw.pipeline_key, draw_queue_.size());
