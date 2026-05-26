@@ -97,6 +97,7 @@ cmake --build build
 - [x] P0 #13: Blend state → Metal pipeline (blend enable/factors/ops, color write mask, independent blend, pipeline cache)
 - [x] P0 #14: Depth/stencil state → Metal (depth test/write, stencil front/back ops, two-sided stencil, depth bounds)
 - [x] P0 #15: Engine3D array method dispatch (viewport, scissor, blend, color write mask, vertex arrays, stencil ops, polygon offset, alpha test)
+- [x] P0 #16: 渲染管线关键缺陷修复 (index draw 触发修复, 高32位地址寄存器, 动态 MTLVertexDescriptor, IndexBuffer limit)
 
 **P1** — Rendering & Services (In Progress)
 - [x] P1 #1: VI BufferQueue 双缓冲帧交换 (DequeueBuffer/QueueBuffer/AcquireBuffer/ReleaseBuffer + 三缓冲)
