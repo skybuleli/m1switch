@@ -177,8 +177,20 @@ class AmProxyService : public ServiceBase {
     class SelfControllerService : public ServiceBase {
     public:
         const char* Name() const override { return "SelfController"; }
-        bool HandleCommand(u32, const u8*, size_t, u8* out, size_t* os) override
-            { *os = 0; return true; }
+        bool HandleCommand(u32 cid, const u8*, size_t, u8* out, size_t* os) override {
+            switch (cid) {
+            case 0: // GetAppletResourceUserId
+                if (*os >= 8) { u64 uid=1; std::memcpy(out,&uid,8); *os=8; }
+                return true;
+            case 1: // AcquireForegroundRights — 必须成功!
+                *os = 0; return true;
+            case 2: // SetFocusHandlingMode
+            case 3: // SetOutOfFocusSuspendingEnabled
+                *os = 0; return true;
+            default:
+                *os = 0; return true;
+            }
+        }
     } self_ctl_;
     class AudioControllerService : public ServiceBase {
     public:
@@ -204,6 +216,23 @@ class AmProxyService : public ServiceBase {
         bool HandleCommand(u32, const u8*, size_t, u8* out, size_t* os) override
             { *os = 0; return true; }
     } libapplet_creator_;
+    class AppletFunctionsService : public ServiceBase {
+    public:
+        const char* Name() const override { return "IFunctions"; }
+        bool HandleCommand(u32 cid, const u8*, size_t, u8* out, size_t* os) override {
+            switch (cid) {
+            case 0:  // Initialize
+            case 1:  // NotifyRunning — 必须成功
+                LOG_DEBUG("IFunctions: cmd %u", cid);
+                *os = 0; return true;
+            case 2:  // GetPseudoDeviceId
+                if (*os >= 0x10) { std::memset(out,0,0x10); *os=0x10; }
+                return true;
+            default:
+                *os = 0; return true;
+            }
+        }
+    } functions_ctl_;
 
 public:
     AmProxyService()
@@ -223,6 +252,7 @@ public:
         case 3:  sub = &audio_ctl_; break;                // GetAudioController
         case 4:  sub = &display_ctl_; break;              // GetDisplayController
         case 11: sub = &libapplet_creator_; break;         // GetLibraryAppletCreator
+        case 20: sub = &functions_ctl_; break;              // GetFunctions (IApplicationFunctions)
         case 1000: sub = &debug_ctl_; break;               // GetDebugFunctions
         default:
             LOG_TRACE("AmProxy: unhandled cmd %u", cmd_id);
