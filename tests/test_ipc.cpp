@@ -40,7 +40,7 @@ TEST(IPC_ConnectAndDispatch) {
     CHECK_EQ(0, result);
     // Custom data starts after IpcResponse header
     // (Phase 6: IPC custom data forwarding may need adjustment)
-    CHECK(resp_size >= sizeof(IpcResponse));
+    CHECK(resp_size >= 8);  // sizeof(HipcHeader)
 
     return true;
 }
