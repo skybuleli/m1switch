@@ -203,7 +203,8 @@ Result EmulatorCore::Run() {
     auto* tls = memory_.Pointer(main_thread->tls_base);
     if (tls) std::memset(tls, 0, 0x1000);
 
-    u32 main_handle = handles_.Create(main_thread);
+    // 必须使用 KernelHandleTable() 静态实例，SVC 处理器用此查句柄
+    u32 main_handle = KernelHandleTable().Create(main_thread);
 
     main_thread->started.store(true);
     main_thread->running.store(true);
