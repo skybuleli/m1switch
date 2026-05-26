@@ -153,18 +153,20 @@ int main(int argc, char** argv) {
     LOG_INFO("Stack: top=0x%llx size=0x%llx", memory.GetStackTop(), 0x100000ULL);
     // 预分配堆内存（在信号处理函数外分配，避免 macOS ARM64 在信号上下文中
     //  mach_vm_map 后访存异常的问题）
+    // 使用较大的堆（64MB）以满足 hello_colours 等 NRO 的需求
+    const u64 heap_size = 0x4000000ULL; // 64 MB
     {
-        Result r = memory.SetHeapSize(0x100000);
+        Result r = memory.SetHeapSize(heap_size);
         LOG_INFO("Heap: base=0x%llx size=0x%llx result=%d",
-                 memory.GetHeapBase(), 0x100000ULL, (int)r);
+                 memory.GetHeapBase(), heap_size, (int)r);
         if (Failed(r)) {
             LOG_WARN("Heap pre-allocation failed — some NROs will not work");
         } else {
             // 写入所有页确保 demand paging 已触发
             u8* heap_ptr = memory.Pointer(memory.GetHeapBase());
             if (heap_ptr) {
-                std::memset(heap_ptr, 0xAB, 0x100000);
-                LOG_INFO("Heap: %llu bytes pre-touched", (u64)0x100000);
+                std::memset(heap_ptr, 0xAB, heap_size);
+                LOG_INFO("Heap: %llu bytes pre-touched", heap_size);
             }
         }
     }

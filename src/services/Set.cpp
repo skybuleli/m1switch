@@ -20,12 +20,11 @@ public:
         case 0: // Initialize
             *out_sz = 0; return true;
         case 1: // GetAvailableLanguageCodes
-            if (*out_sz >= 16) {
-                std::memset(out, 0, 16);
-                out[0] = 1; out[4] = 1;  // 1 language: en-US
-                out[8] = 0; out[9] = 0;  // en-US = 0
-                out[10] = 0; out[11] = 0;
-                *out_sz = 16;
+            if (*out_sz >= 8) {
+                // 返回 u64: 低32位=语言数量, 高32位=总大小
+                u64 result = (1ULL << 32) | 1; // 1 lang, total_size=1
+                std::memcpy(out, &result, 8);
+                *out_sz = 8;
             }
             return true;
         case 2: // MakeLanguageCode

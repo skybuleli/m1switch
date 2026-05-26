@@ -68,7 +68,9 @@ SVC(SvcSetHeapSize) {
         Result r = g_mem->SetHeapSize(size); 
         u64 base = g_mem->GetHeapBase();
         LOG_INFO("SvcSetHeapSize: result=%d base=0x%llx", (int)r, base);
-        Ret(state, base);
+        // Horizon OS 规范: x0=Result, x1=heap_addr
+        state->x[1] = base;
+        Ret(state, 0);
     } else {
         LOG_INFO("SvcSetHeapSize: skipping (size=%llx)", size);
         Ret(state, 0);
@@ -585,6 +587,15 @@ SVC(SvcBreak) {
     u64 size = Arg(state, 2);
     LOG_ERROR("Break(reason=0x%x, address=0x%llx, size=0x%llx)", reason, address, size);
 
+    // 打印完整寄存器状态用于诊断
+    LOG_ERROR("Break regs: x0=%llx x1=%llx x2=%llx x3=%llx x4=%llx x5=%llx",
+              state->x[0], state->x[1], state->x[2], state->x[3],
+              state->x[4], state->x[5]);
+    LOG_ERROR("Break regs: x6=%llx x7=%llx x8=%llx x16=%llx x29=%llx x30=%llx",
+              state->x[6], state->x[7], state->x[8], state->x[16],
+              state->x[29], state->x[30]);
+
+    // Read break payload from stack
     if (g_mem && address != 0 && size > 0 && size <= 0x100) {
         u64 guest_addr = address;
         u64 mem_base = g_mem->BaseAddress();
@@ -637,21 +648,25 @@ SVC(SvcReturnFromException) {
 
 SVC(SvcGetInfo) {
     u32 id0 = (u32)Arg(state, 0);
+    u64 info_val = 0;
     LOG_TRACE("GetInfo(%u)", id0);
     switch (id0) {
-    case 0:  Ret(state, 0xF); break;     // CoreMask
-    case 1:  Ret(state, 0x3F); break;    // PriorityMask
-    case 2:  Ret(state, 0x80000000); break; // AliasRegionAddress
-    case 3:  Ret(state, 0x40000000); break; // AliasRegionSize
-    case 4:  Ret(state, 0x80000000); break; // HeapRegionAddress
-    case 5:  Ret(state, 0x40000000); break; // HeapRegionSize
-    case 6:  Ret(state, 0xC0000000); break; // TotalMemorySize (3 GiB)
-    case 7:  Ret(state, 0x1000000); break;  // UsedMemorySize
-    case 14: Ret(state, 0); break;         // UserExceptionContextAddress
-    case 15: state->x[1] = 0; Ret(state, 0); break; // map region
-    case 16: Ret(state, 0x40000000); break; // map region size
-    default: Ret(state, 0); break;
+    case 0:  info_val = 0xF; break;          // CoreMask (4 performance + 4 efficiency)
+    case 1:  info_val = 0x3F; break;         // PriorityMask
+    case 2:  info_val = 0x80000000; break;   // AliasRegionAddress
+    case 3:  info_val = 0x40000000; break;   // AliasRegionSize
+    case 4:  info_val = 0x80000000; break;   // HeapRegionAddress
+    case 5:  info_val = 0x40000000; break;   // HeapRegionSize
+    case 6:  info_val = 0xC0000000; break;   // TotalMemorySize (3 GiB)
+    case 7:  info_val = 0x1000000; break;    // UsedMemorySize
+    case 14: info_val = 0; break;            // UserExceptionContextAddress
+    case 15: info_val = 0; break;            // map region
+    case 16: info_val = 0x40000000; break;   // map region size
+    default: break;
     }
+    // Horizon OS 规范: x0=Result, x1=info_value
+    state->x[1] = info_val;
+    Ret(state, 0);
 }
 
 SVC(SvcGetResourceLimitLimitValue) {
