@@ -206,6 +206,27 @@ int main(int argc, char** argv) {
     u32 main_handle = KernelHandleTable().Create(main_thread);
     LOG_INFO("Main thread handle=0x%x", main_handle);
 
+    // ── 5a. 修正 libnx 全局指针 ─────────────────────
+    // init 函数 0x44b5b0 检查 .data+0x7BD0 处指针非空且第一 word == 8
+    // libnx 的 setsysGetFirmwareVersion 成功时应设置此指针，但响应格式不完整导致
+    {
+        u64 base_addr = memory.BaseAddress();
+        // .data 段: 第三个 segment (index 2)
+        if (info.segments.size() >= 3) {
+            u64 data_addr = info.segments[2].guest_address;
+            u64 bss_addr  = info.bss_address;
+            u64 bss_sz    = info.bss_size;
+            u64 struct_addr = bss_addr + bss_sz; // .bss 末尾
+            u32 check_val = 8;
+            memory.Write<u32>(struct_addr, check_val);
+            u64 ptr_addr = data_addr + 0x7BD0;
+            memory.Write<u64>(ptr_addr, struct_addr);
+            LOG_INFO("PATCH: *0x%llx → 0x%llx (first_word=8)", ptr_addr, struct_addr);
+        } else {
+            LOG_WARN("PATCH: NRO has %zu segments, need >=3", info.segments.size());
+        }
+    }
+
     // ── 6. NV wiring ────────────────────────────────
     ServiceNv_SetMemory(&memory);
     ServiceNv_SetTracker(&tracker);
