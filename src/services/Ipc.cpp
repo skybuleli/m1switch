@@ -33,6 +33,18 @@ u32 IpcManager::Connect(const char* name) {
     return sid;
 }
 
+u32 IpcManager::CreateSession(ServiceBase* service) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    u32 sid = next_session_++;
+    Session s;
+    s.id = sid;
+    s.service_name = "(anonymous)";
+    s.service = service;
+    sessions_.push_back(s);
+    LOG_DEBUG("IPC: CreateSession → session 0x%x (anonymous, svc=%p)", sid, (void*)service);
+    return sid;
+}
+
 u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
                                u8* response, size_t* resp_size) {
     // Find session

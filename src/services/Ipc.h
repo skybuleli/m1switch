@@ -53,6 +53,10 @@ public:
 
     void RegisterService(const char* name, ServiceBase* service);
     u32  Connect(const char* name);
+
+    // Create an anonymous session to a service instance (for sub-objects)
+    u32  CreateSession(ServiceBase* service);
+
     u32  HandleRequest(u32 session, const u8* data, size_t size,
                        u8* response, size_t* resp_size);
 
