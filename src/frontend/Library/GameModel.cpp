@@ -44,10 +44,19 @@ GameEntry GameEntry::FromJSON(const std::string& json) {
     e.author = find("author");
     e.version = find("version");
     e.build_id = find("build_id");
-    e.file_size = std::stoull(find("file_size"));
-    e.added_time = std::stoull(find("added_time"));
-    e.last_played = std::stoull(find("last_played"));
-    e.play_count = std::stoul(find("play_count"));
+    // 数值字段可能为空或损坏，用 try/catch 保护
+    auto safe_stoull = [](const std::string& s) -> u64 {
+        try { return s.empty() ? 0ULL : std::stoull(s, nullptr, 0); }
+        catch (...) { return 0ULL; }
+    };
+    auto safe_stoul = [](const std::string& s) -> u32 {
+        try { return s.empty() ? 0U : std::stoul(s, nullptr, 0); }
+        catch (...) { return 0U; }
+    };
+    e.file_size = safe_stoull(find("file_size"));
+    e.added_time = safe_stoull(find("added_time"));
+    e.last_played = safe_stoull(find("last_played"));
+    e.play_count = safe_stoul(find("play_count"));
     e.is_favorite = find("is_favorite") == "true";
     e.has_icon = find("has_icon") == "true";
 
