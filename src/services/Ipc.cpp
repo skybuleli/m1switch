@@ -243,6 +243,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     size_t raw_in_size = 0;
 
     u32 cmif_token = 0; // 保存请求中的 CMIF token，用于响应回填
+    bool skip_domain = false; // 标记 Control cmd=0 应返回 domain error
     if (req_hdr.num_data_words > 0) {
         // 尝试解析 CmifInHeader
         CmifInHeader cmif_in = {};
@@ -354,15 +355,12 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     
     if (is_control) {
         if (cmd_id == 0) {
-            // ConvertCurrentObjectToDomain
-            // libnx 在 domain conversion 成功后期望发送 domain 格式请求
-            // 但我们的 IPC 层还不支持 domain 格式，因此返回 NotFound
-            // 这将使 libnx 回退到非 domain 路径
-            LOG_DEBUG("IPC: ConvertCurrentObjectToDomain(skip) for session 0x%x", session_handle);
-            // 返回成功但不出 domain_id → libnx 不认为已转换
-            // 或者返回错误让 libnx 跳过 domain
+            // ConvertCurrentObjectToDomain — 返回 error 让 libnx 跳过 domain
+            // libnx 的 serviceCreate 在 domain 失败后会回退到非 domain 模式
+            LOG_DEBUG("IPC: ConvertCurrentObjectToDomain fail (skip domain) for session 0x%x", session_handle);
             raw_out_max = 0;
             handled = true;
+            skip_domain = true; // 标记：CmifOutHeader 写入错误码
         } else if (cmd_id == 3) {
             // QueryPointerBufferSize — 返回 u16=0（无指针缓冲需求）
             if (raw_out_max >= 2) {
@@ -452,8 +450,9 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         // 写入 CmifOutHeader（回填请求中的 token）
         CmifOutHeader cmif_out = {};
         cmif_out.magic  = CMIF_OUT_MAGIC;
-        cmif_out.token  = cmif_token; // 必须匹配请求 token
-        cmif_out.result = 0; // 成功
+        cmif_out.token  = cmif_token;
+        // ConvertCurrentObjectToDomain: 返回错误让 libnx 跳过 domain
+        cmif_out.result = skip_domain ? 0x7F80006 : 0;
         std::memcpy(response + cmif_out_off, &cmif_out, sizeof(cmif_out));
         
         // 计算总 data_words 大小（从数据偏移到结尾，对齐到 4 字节）
