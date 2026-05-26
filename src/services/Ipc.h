@@ -70,6 +70,7 @@ private:
         u32 id;
         std::string service_name;
         ServiceBase* service = nullptr;
+        bool is_domain = false; // 是否已转为 domain 模式
     };
     std::unordered_map<std::string, ServiceBase*> services_;
     std::vector<Session> sessions_;

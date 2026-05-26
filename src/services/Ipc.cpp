@@ -236,14 +236,17 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     ParsedRecvList recv_list = ParseRecvList(data, req_hdr, dw_off);
 
     // ── CMIF 请求解析 ─────────────────────────────────
-    // CmifInHeader 在 data_words 区域内 16 字节对齐
-    size_t cmif_off = CalcCmifAlign(dw_off);
+    // domain 模式: CmifInHeader 在 data_words + 4 处（无 16 字节对齐）
+    // 非 domain: CmifInHeader 在 16 字节对齐处
+    size_t cmif_off = session->is_domain ? (dw_off + 4) : CalcCmifAlign(dw_off);
     u32 cmd_id = 0;
     const u8* raw_in = nullptr;
     size_t raw_in_size = 0;
 
-    u32 cmif_token = 0; // 保存请求中的 CMIF token，用于响应回填
-    bool skip_domain = false; // 标记 Control cmd=0 应返回 domain error
+    u32 cmif_token = 0;
+
+    // 如果 session 是 domain 模式，第一个 data_word 是 object_id，跳过它
+    size_t domain_skip = session->is_domain ? 4 : 0;
     if (req_hdr.num_data_words > 0) {
         // 尝试解析 CmifInHeader
         CmifInHeader cmif_in = {};
@@ -355,12 +358,17 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     
     if (is_control) {
         if (cmd_id == 0) {
-            // ConvertCurrentObjectToDomain — 返回 error 让 libnx 跳过 domain
-            // libnx 的 serviceCreate 在 domain 失败后会回退到非 domain 模式
-            LOG_DEBUG("IPC: ConvertCurrentObjectToDomain fail (skip domain) for session 0x%x", session_handle);
-            raw_out_max = 0;
+            // ConvertCurrentObjectToDomain — 返回 domain_id 让 libnx 进入 domain 模式
+            // appletInitialize 依赖此成功，否则整个初始化失败
+            LOG_DEBUG("IPC: ConvertCurrentObjectToDomain → domain_id=1 for session 0x%x", session_handle);
+            if (raw_out_max >= 4) {
+                u32 domain_id = 1;
+                std::memcpy(raw_out, &domain_id, sizeof(domain_id));
+                raw_out_max = 4;
+            }
+            session->is_domain = true; // 记住 domain 状态供后续请求使用
+            LOG_DEBUG("IPC: session 0x%x now in domain mode", session_handle);
             handled = true;
-            skip_domain = true; // 标记：CmifOutHeader 写入错误码
         } else if (cmd_id == 3) {
             // QueryPointerBufferSize — 返回 u16=0（无指针缓冲需求）
             if (raw_out_max >= 2) {
@@ -451,8 +459,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         CmifOutHeader cmif_out = {};
         cmif_out.magic  = CMIF_OUT_MAGIC;
         cmif_out.token  = cmif_token;
-        // ConvertCurrentObjectToDomain: 返回错误让 libnx 跳过 domain
-        cmif_out.result = skip_domain ? 0x7F80006 : 0;
+        cmif_out.result = 0;
         std::memcpy(response + cmif_out_off, &cmif_out, sizeof(cmif_out));
         
         // 计算总 data_words 大小（从数据偏移到结尾，对齐到 4 字节）
