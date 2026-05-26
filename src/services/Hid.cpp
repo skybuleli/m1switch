@@ -1,6 +1,7 @@
 #include "services/Ipc.h"
 #include "common/Log.h"
 #include "memory/Memory.h"
+#include "kernel/Kernel.h"
 #include <cstring>
 
 // ── Input subsystem C API ──────────────────────────────────
@@ -105,6 +106,16 @@ public:
             auto* ptr = g_hid_memory->Pointer(HID_SHARED_MEM);
             if (ptr) std::memset(ptr, 0, HID_SHARED_SIZE);
         }
+
+        // 创建 KSharedMemory 内核对象，供 GetSharedMemory 返回给 libnx
+        hid_shmem_ = new KSharedMemory();
+        hid_shmem_->address = 0;  // 由 libnx 通过 svcMapSharedMemory 指定
+        hid_shmem_->phys_addr = HID_SHARED_MEM;
+        hid_shmem_->size = HID_SHARED_SIZE;
+        hid_shmem_->perm = Memory::Permission::RW;
+        hid_shmem_handle_ = KernelHandleTable().Create(hid_shmem_);
+        LOG_INFO("HID: shared memory handle=0x%x (phys=0x%llx size=0x%llx)",
+                  hid_shmem_handle_, HID_SHARED_MEM, HID_SHARED_SIZE);
     }
 
     const char* Name() const override { return "hid:"; }
@@ -133,21 +144,28 @@ public:
     }
 
 private:
+    KSharedMemory* hid_shmem_ = nullptr;
+    u32 hid_shmem_handle_ = 0;
+
     bool HandleInitialize(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
-        LOG_DEBUG("HID: Initialize");
-        // libnx hidInitialize 将响应中的 move/copy handles 作为共享内存句柄
-        // 我们不返回句柄（由 GetSharedMemory 命令处理），只返回空成功响应
-        // 根据 Switchbrew: Initialize cmd 0 返回空响应 (仅 CMIF 头)
-        *out_sz = 0;
+        LOG_DEBUG("HID: Initialize handle=0x%x", hid_shmem_handle_);
+        // libnx 的 hidInitialize 期望 cmd 0 返回 KSharedMemory 的 copy handle
+        // 将 KSharedMemory handle 写入 raw_out[0..3], IPC 层会提取到响应头
+        if (*out_sz >= 4) {
+            u32 handle_val = hid_shmem_handle_;
+            std::memcpy(out, &handle_val, sizeof(handle_val));
+            *out_sz = 4;
+        }
         return true;
     }
 
     bool HandleGetSharedMemory(const u8*, size_t, u8* out, size_t* out_sz) {
-        LOG_DEBUG("HID: GetSharedMemory → 0x%llx", HID_SHARED_MEM);
-
         // 更新共享内存
         UpdateSharedMemory();
 
+        LOG_DEBUG("HID: GetSharedMemory phys=0x%llx", HID_SHARED_MEM);
+
+        // 返回 HID 共享内存物理地址 (handle 已在 Initialize 中返回)
         if (*out_sz >= 16) {
             std::memset(out, 0, 16);
             std::memcpy(out, &HID_SHARED_MEM, 8);

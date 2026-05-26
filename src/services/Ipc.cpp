@@ -314,13 +314,24 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     } else if ((sname == "appletOE" || sname == "appletAE") && cmd_id == 0) {
         needs_move_handle = true;
     } else if ((sname == "hid" || sname == "hid:") && cmd_id == 1) {
-        // HID::GetSharedMemory (cmd 1): libnx 期望返回共享内存的 copy handle
-        // 将 HID_SHARED_MEM 地址作为 copy handle 返回
         needs_move_handle = true;
     } else if (cmd_id <= 1000 && session && session->service &&
                strcmp(session->service->Name(), "appletProxy") == 0) {
         // applet 代理会话的所有子对象命令都返回 move handle
         needs_move_handle = true;
+    }
+    
+    // HID::Initialize (cmd 0): libnx 期望返回 KSharedMemory 的 copy handle
+    if ((sname == "hid" || sname == "hid:") && cmd_id == 0) {
+        if (resp_remaining >= 4 + 4) {
+            LOG_DEBUG("HID: Initialize reserving copy handle slot");
+            shdr_pos = resp_ptr;
+            handle_pos = resp_ptr + 4;
+            num_copy_handles = 1;
+            resp_hdr.has_special_header = 1;
+            resp_ptr += 4 + 4;
+            resp_remaining -= 4 + 4;
+        }
     }
 
     // SM::Initialize (cmd=0): 返回会话本身的句柄作为 copy handle
@@ -423,7 +434,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     if (handled && handle_pos && raw_out_max >= 4) {
         u32 move_handle = 0;
         std::memcpy(&move_handle, raw_out, sizeof(move_handle));
-        if (move_handle >= 0x1000 && move_handle < 0x10000) { // 验证是有效 session 句柄
+        if (move_handle != 0) { // 验证是有效句柄 (session 0x1000+ 或 kernel 0xD000+)
             LOG_DEBUG("IPC: move handle 0x%x for '%s' cmd=%u",
                       move_handle, svc_name_cstr, cmd_id);
             std::memcpy(handle_pos, &move_handle, sizeof(move_handle));

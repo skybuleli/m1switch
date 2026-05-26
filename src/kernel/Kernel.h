@@ -158,6 +158,9 @@ public:
     KSharedMemory() { type = KObjectType::SharedMemory; }
     u64 address = 0;
     u64 size = 0;
+    Memory::Permission perm = Memory::Permission::RW;
+    // 物理地址: 对于预分配的共享内存（如 HID），保存实际映射的 guest 地址
+    u64 phys_addr = 0;
 };
 
 class KInterruptEvent : public KObject {

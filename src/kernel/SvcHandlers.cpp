@@ -806,24 +806,81 @@ SVC(SvcUnknown3C)            { LOG_TRACE("Unknown3C"); Ret(state, 0); }
 
 SVC(SvcMapSharedMemory)   {
     u32 handle = (u32)Arg(state, 0);
-    u64 map_addr = Arg(state, 1);
-    LOG_INFO("MapSharedMemory(handle=0x%x, addr=0x%llx, perm=0x%llx)",
-              handle, map_addr, Arg(state, 2));
-    // HID 共享内存: 当 libnx 映射共享内存句柄时，
-    // 将我们的 HID 缓冲映射到客体的指定地址
-    static constexpr u64 HID_SHARED_MEM = 0xE1000000;
-    static constexpr u64 HID_SHARED_SIZE = 0x40000;
-    if (g_mem && map_addr >= HID_SHARED_MEM && map_addr < HID_SHARED_MEM + HID_SHARED_SIZE) {
-        // HID 缓冲已由 HidService 构造器映射，无需重复映射
-        LOG_INFO("MapSharedMemory: HID buffer already mapped at 0x%llx", HID_SHARED_MEM);
-    } else if (g_mem && map_addr >= 0x10000000 && map_addr < 0xF0000000) {
-        // 通用共享内存映射: 将物理内存映射到指定地址
-        g_mem->MapPhysical(map_addr, 0x40000, Memory::Permission::RW);
-        LOG_INFO("MapSharedMemory: remapped 0x%llx as RW", map_addr);
+    u64 addr_ptr = Arg(state, 1);  // 指向输出地址的指针
+    u64 size = Arg(state, 2);
+    u32 perm = (u32)Arg(state, 3);
+    
+    auto* sm = KernelHandleTable().Get<KSharedMemory>(handle);
+    if (!sm) {
+        LOG_WARN("MapSharedMemory: invalid handle 0x%x", handle);
+        Ret(state, (u64)Result::InvalidHandle);
+        return;
     }
+    
+    LOG_INFO("MapSharedMemory(handle=0x%x, ptr=0x%llx, size=0x%llx, perm=%u) shm=[addr=0x%llx, phys=0x%llx]",
+              handle, addr_ptr, size, perm, sm->address, sm->phys_addr);
+    
+    if (g_mem) {
+        u64 map_addr = 0;
+        // 如果 KSharedMemory 有预分配的物理地址，用它
+        if (sm->phys_addr != 0) {
+            map_addr = sm->phys_addr;
+        } else if (addr_ptr != 0) {
+            // 读取输出地址指针的值（libnx 可能传了期望地址）
+            g_mem->Read(addr_ptr, &map_addr);
+            if (map_addr == 0) {
+                // 没有指定地址，使用预设地址
+                map_addr = sm->address;
+            }
+        } else {
+            map_addr = sm->address;
+        }
+        
+        // 确保映射
+        u64 map_size = sm->size > 0 ? sm->size : (size > 0 ? size : 0x40000);
+        if (map_addr != 0 && map_size > 0) {
+            // 检查是否已映射
+            bool already_mapped = false;
+            u64 check_addr = map_addr;
+            // 简单启发: 检查该地址是否在映射表中
+            u8* ptr = g_mem->Pointer(map_addr);
+            if (ptr) {
+                // 尝试读一个字节看是否可访问
+                volatile u8 test = ptr[0];
+                (void)test;
+                already_mapped = true;
+            }
+            
+            if (!already_mapped) {
+                Result r = g_mem->MapPhysical(map_addr, map_size, 
+                    static_cast<Memory::Permission>(perm & 7));
+                LOG_INFO("MapSharedMemory: mapped 0x%llx+0x%llx → %s", 
+                          map_addr, map_size, 
+                          Failed(r) ? "FAIL" : "OK");
+            } else {
+                LOG_INFO("MapSharedMemory: already mapped at 0x%llx", map_addr);
+            }
+        }
+        
+        // 如果提供了输出指针，写入映射地址
+        if (addr_ptr != 0 && map_addr != 0) {
+            g_mem->Write(addr_ptr, map_addr);
+        }
+        
+        sm->address = map_addr;
+    }
+    
     Ret(state, 0);
 }
-SVC(SvcUnmapSharedMemory) { LOG_TRACE("UnmapSharedMemory"); Ret(state, 0); }
+
+SVC(SvcUnmapSharedMemory) {
+    u32 handle = (u32)Arg(state, 0);
+    u64 addr = Arg(state, 1);
+    u64 size = Arg(state, 2);
+    LOG_TRACE("UnmapSharedMemory(handle=0x%x, addr=0x%llx, size=0x%llx)", handle, addr, size);
+    Ret(state, 0);
+}
+
 
 SVC(SvcCreateSession) {
     auto* s = new KSession();
@@ -927,10 +984,16 @@ SVC(SvcSetProcessActivity) {
 }
 
 SVC(SvcCreateSharedMemory) {
+    u64 size = Arg(state, 1);
+    u32 perm = (u32)Arg(state, 2);
+    (void)Arg(state, 3); // other_perm - 未使用
+    
     auto* sm = new KSharedMemory();
+    sm->size = size;
+    sm->perm = static_cast<Memory::Permission>(perm & 7);
     u32 handle = KernelHandleTable().Create(sm);
     state->x[1] = handle;
-    LOG_DEBUG("CreateSharedMemory → handle=0x%x", handle);
+    LOG_DEBUG("CreateSharedMemory(size=0x%llx, perm=%u) → handle=0x%x", size, perm, handle);
     Ret(state, 0);
 }
 
