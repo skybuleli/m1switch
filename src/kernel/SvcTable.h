@@ -1,17 +1,19 @@
 #pragma once
 
 #include "common/Types.h"
-#include "cpu/ExceptionHandler.h"  // for GuestThreadState
+#include "cpu/ExceptionHandler.h"
 
-// Dispatch SVC call (called from signal handler)
 void SvcHandler_Dispatch(u32 svc_num, GuestThreadState* state);
 
-// Initialize the SVC handler table
 void SvcTable_Init();
 
-// Register a handler for an SVC number
 using SvcHandler = void(*)(u32 svc_num, GuestThreadState* state);
 void SvcTable_Register(u32 svc_num, SvcHandler handler);
 
-// Register all standard SVC handlers
 void SvcHandlers_RegisterAll();
+
+void SvcHandlers_SetMemory(class Memory* mem);
+void EmuCore_SetTlsBase(u64 base);
+void SvcHandlers_SetDispatch(SvcHandlerFn fn);
+void SvcHandlers_SetCurrentTls(u64 tls);
+u64  SvcHandlers_GetCurrentTls();

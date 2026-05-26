@@ -2,10 +2,12 @@
 #include "common/Log.h"
 #include <array>
 #include <cstring>
+#include <atomic>
 
 static constexpr u32 MAX_SVC = 0x100;
 static std::array<SvcHandler, MAX_SVC> s_svc_table;
 static bool s_initialized = false;
+static std::atomic<u64> s_svc_call_count{0};
 
 void SvcTable_Init() {
     if (s_initialized) return;
@@ -22,6 +24,7 @@ void SvcTable_Register(u32 svc_num, SvcHandler handler) {
 }
 
 void SvcHandler_Dispatch(u32 svc_num, GuestThreadState* state) {
+    s_svc_call_count.fetch_add(1, std::memory_order_relaxed);
     if (svc_num >= MAX_SVC || !s_svc_table[svc_num]) {
         LOG_WARN("Unhandled SVC #0x%02x (PC=0x%llx)", svc_num, state->pc);
         state->x[0] = 0xFFFF8000DEAD0000ULL | svc_num;
@@ -29,4 +32,9 @@ void SvcHandler_Dispatch(u32 svc_num, GuestThreadState* state) {
     }
     LOG_TRACE("SVC #0x%02x dispatched", svc_num);
     s_svc_table[svc_num](svc_num, state);
+}
+
+// ── C API for debug panels ──────────────────────────────────
+extern "C" u64 Cpu_GetSvcCallCount() {
+    return s_svc_call_count.load(std::memory_order_relaxed);
 }

@@ -1,15 +1,43 @@
 #include "kernel/SvcTable.h"
+#include "kernel/Kernel.h"
 #include "common/Log.h"
 #include "memory/Memory.h"
+#include "cpu/NativeExec.h"
 #include "services/Ipc.h"
 #include <mach/mach_time.h>
 #include <ctime>
 
-// ── Memory reference (set during init) ─────────────────────
 static Memory* g_mem = nullptr;
 void SvcHandlers_SetMemory(Memory* mem) { g_mem = mem; }
 
-// ── Helpers ────────────────────────────────────────────────
+static u64 g_tls_base = 0;
+void EmuCore_SetTlsBase(u64 base) { g_tls_base = base; }
+
+static SvcHandlerFn g_svc_dispatch_fn;
+void SvcHandlers_SetDispatch(SvcHandlerFn fn) { g_svc_dispatch_fn = std::move(fn); }
+
+static constexpr u64 TLS_IPC_OFFSET = 0x100;
+static constexpr u64 TLS_IPC_SIZE   = 0x100;
+
+static thread_local u64 g_current_tls = 0;
+
+void SvcHandlers_SetCurrentTls(u64 tls) { g_current_tls = tls; }
+u64 SvcHandlers_GetCurrentTls() { return g_current_tls; }
+
+static u64 GetEffectiveTlsBase() {
+    return (g_current_tls != 0) ? g_current_tls : g_tls_base;
+}
+static constexpr u64 TLS_PER_THREAD = 0x200;
+static constexpr u64 TLS_SLOTS_BASE = 0xFD000000;
+static constexpr u64 TLS_SLOTS_COUNT = 64;
+static std::atomic<u32> g_tls_next_slot{1};
+
+static constexpr u64 STACK_PER_THREAD = 0x100000;
+static constexpr u64 STACK_SLOTS_BASE = 0xFB000000;
+static std::atomic<u32> g_stack_next_slot{1};
+
+static std::atomic<u64> g_next_thread_id{2};
+
 static u64 Arg(const GuestThreadState* s, int n) { return s->x[n]; }
 static void Ret(GuestThreadState* s, u64 v) { s->x[0] = v; }
 #define SVC(name) static void name(u32 num, GuestThreadState* state)
@@ -44,9 +72,18 @@ SVC(SvcQueryMemory) {
     u64 addr = Arg(state, 1);
     LOG_TRACE("QueryMemory(0x%llx)", addr);
     // Return: {base, size, type, attr, perm, refcount, ipc_count, pad}
-    state->x[1] = addr & ~0xFFF;  // base
-    state->x[2] = 0x1000;          // size
-    state->x[3] = 3;               // type = MemType_Unmapped
+    if (g_mem) {
+        u64 base, size;
+        u32 type;
+        g_mem->QueryRegion(addr, base, size, type);
+        state->x[1] = base;
+        state->x[2] = size;
+        state->x[3] = type;
+    } else {
+        state->x[1] = addr & ~0xFFF;
+        state->x[2] = 0x1000;
+        state->x[3] = 3; // Unmapped
+    }
     Ret(state, 0);
 }
 
@@ -73,34 +110,114 @@ SVC(SvcExitProcess) {
 }
 
 SVC(SvcCreateThread) {
-    static u64 next_thread = 2;
-    LOG_DEBUG("CreateThread → id=%llu", next_thread);
-    state->x[1] = next_thread++;
+    u64 entry = Arg(state, 1);
+    u64 arg   = Arg(state, 2);
+    u64 sp    = Arg(state, 3);
+    s32 prio  = (s32)Arg(state, 4);
+    s32 core  = (s32)Arg(state, 5);
+
+    auto* t = new KThread();
+    // Convert guest VA to host absolute address for NativeExec::RunGuest
+    u64 host_base = g_mem ? g_mem->BaseAddress() : 0;
+    t->entry_point = host_base + entry;
+    t->arg = arg;
+    t->priority = prio;
+    t->ideal_core = (core < 0) ? 0 : core;
+    t->thread_id = g_next_thread_id.fetch_add(1);
+
+    if (sp == 0) {
+        u32 slot = g_stack_next_slot.fetch_add(1);
+        u64 stack_guest = STACK_SLOTS_BASE + (u64)slot * STACK_PER_THREAD + STACK_PER_THREAD;
+        t->stack_top = host_base + stack_guest;
+        t->kernel_stack = true;
+        if (g_mem) {
+            g_mem->MapPhysical(STACK_SLOTS_BASE + (u64)slot * STACK_PER_THREAD,
+                               STACK_PER_THREAD, Memory::Permission::RW);
+            auto* ptr = g_mem->Pointer(STACK_SLOTS_BASE + (u64)slot * STACK_PER_THREAD);
+            if (ptr) std::memset(ptr, 0, STACK_PER_THREAD);
+        }
+    } else {
+        t->stack_top = host_base + sp;
+    }
+
+    u32 slot = g_tls_next_slot.fetch_add(1);
+    t->tls_base = TLS_SLOTS_BASE + (u64)slot * TLS_PER_THREAD;
+
+    if (g_mem) {
+        g_mem->MapPhysical(t->tls_base, TLS_PER_THREAD, Memory::Permission::RW);
+        auto* ptr = g_mem->Pointer(t->tls_base);
+        if (ptr) std::memset(ptr, 0, TLS_PER_THREAD);
+    }
+
+    u32 handle = KernelHandleTable().Create(t);
+    LOG_DEBUG("CreateThread → handle=0x%x tid=%llu entry=0x%llx sp=0x%llx kernel_stack=%d",
+              handle, t->thread_id, entry, t->stack_top, t->kernel_stack);
+    state->x[1] = handle;
     Ret(state, 0);
 }
 
 SVC(SvcStartThread) {
-    LOG_TRACE("StartThread");
+    u32 handle = (u32)Arg(state, 0);
+    auto* t = KernelHandleTable().Get<KThread>(handle);
+    if (!t) { Ret(state, (u64)Result::InvalidHandle); return; }
+
+    if (t->started.load()) { Ret(state, 0); return; }
+    t->started.store(true);
+    t->running.store(true);
+
+    auto* wake_ev = new KEvent();
+    t->wake_event = wake_ev;
+
+    std::thread host([t]() {
+        char name[32];
+        snprintf(name, sizeof(name), "GuestT%llu", t->thread_id);
+        pthread_setname_np(name);
+
+        extern void SvcHandlers_SetCurrentTls(u64);
+        SvcHandlers_SetCurrentTls(t->tls_base);
+
+        extern void SigHandler_EnsureInstalled();
+        SigHandler_EnsureInstalled();
+
+        LOG_INFO("Guest thread %llu started: PC=0x%llx SP=0x%llx",
+                 t->thread_id, t->entry_point, t->stack_top);
+
+        NativeExec::RunGuest(t->entry_point, t->stack_top, t->tls_base);
+
+        t->running.store(false);
+        t->MarkFinished();
+        LOG_INFO("Guest thread %llu exited", t->thread_id);
+    });
+    t->host_thread = std::move(host);
+    t->host_thread.detach();
+
     Ret(state, 0);
 }
 
 SVC(SvcExitThread) {
-    LOG_DEBUG("ExitThread");
+    LOG_INFO("ExitThread");
     Ret(state, 0);
 }
 
 SVC(SvcGetThreadPriority) {
-    Ret(state, 0x10);  // Default priority
+    u32 handle = (u32)Arg(state, 0);
+    auto* t = KernelHandleTable().Get<KThread>(handle);
+    Ret(state, t ? (u64)t->priority : 0x10);
 }
 
 SVC(SvcSetThreadPriority) {
-    LOG_TRACE("SetThreadPriority(%llu)", Arg(state, 1));
+    u32 handle = (u32)Arg(state, 0);
+    s32 prio = (s32)Arg(state, 1);
+    auto* t = KernelHandleTable().Get<KThread>(handle);
+    if (t) t->priority = prio;
     Ret(state, 0);
 }
 
 SVC(SvcGetThreadCoreMask) {
-    state->x[1] = 0;  // preferred core (any)
-    Ret(state, 0xF);  // affinity mask (all 4 cores)
+    u32 handle = (u32)Arg(state, 0);
+    auto* t = KernelHandleTable().Get<KThread>(handle);
+    state->x[1] = t ? t->ideal_core : 0;
+    Ret(state, 0xF);
 }
 
 SVC(SvcSetThreadCoreMask) {
@@ -113,50 +230,174 @@ SVC(SvcGetCurrentProcessorNumber) {
 }
 
 SVC(SvcGetProcessId) {
-    Ret(state, 1);  // Dummy process ID
+    Ret(state, 1);
 }
 
 SVC(SvcGetThreadId) {
-    Ret(state, 1);  // Dummy thread ID
+    u32 handle = (u32)Arg(state, 0);
+    auto* t = KernelHandleTable().Get<KThread>(handle);
+    Ret(state, t ? t->thread_id : 1);
 }
 
 // ═══════════════════════════════════════════════════════════
 // Synchronization (0x0F-0x1B)
 // ═══════════════════════════════════════════════════════════
 
-SVC(SvcSignalEvent) { LOG_TRACE("SignalEvent"); Ret(state, 0); }
-SVC(SvcClearEvent)  { LOG_TRACE("ClearEvent");  Ret(state, 0); }
+SVC(SvcSignalEvent) {
+    u32 handle = (u32)Arg(state, 0);
+    auto* ev = KernelHandleTable().Get<KEvent>(handle);
+    if (ev) {
+        ev->Signal();
+        LOG_DEBUG("SignalEvent(0x%x)", handle);
+        Ret(state, 0);
+    } else {
+        LOG_WARN("SignalEvent: invalid handle 0x%x", handle);
+        Ret(state, (u64)Result::InvalidHandle);
+    }
+}
+
+SVC(SvcClearEvent) {
+    u32 handle = (u32)Arg(state, 0);
+    auto* ev = KernelHandleTable().Get<KEvent>(handle);
+    if (ev) ev->Clear();
+    Ret(state, 0);
+}
 
 SVC(SvcCreateEvent) {
-    static u32 next_ev = 1;
-    LOG_DEBUG("CreateEvent → handle=%u", next_ev);
+    auto* ev = new KEvent();
+    u32 handle = KernelHandleTable().Create(ev);
+    LOG_DEBUG("CreateEvent → handle=0x%x", handle);
     Ret(state, 0);
-    state->x[1] = next_ev++;
+    state->x[1] = handle;
 }
 
 SVC(SvcCreateTransferMemory) {
-    static u32 next_tm = 0x100;
-    LOG_DEBUG("CreateTransferMemory → handle=0x%x", next_tm);
+    u64 addr = Arg(state, 0);
+    u64 size = Arg(state, 1);
+    u32 perm = (u32)Arg(state, 2);
+
+    auto* tm = new KTransferMemory();
+    tm->address = addr;
+    tm->size = size;
+    tm->perm = static_cast<Memory::Permission>(perm & 7);
+
+    u32 handle = KernelHandleTable().Create(tm);
+    LOG_DEBUG("CreateTransferMemory → handle=0x%x", handle);
     Ret(state, 0);
-    state->x[1] = next_tm++;
+    state->x[1] = handle;
 }
 
 SVC(SvcCloseHandle) {
-    LOG_TRACE("CloseHandle(%llu)", Arg(state, 0));
+    u32 handle = (u32)Arg(state, 0);
+    LOG_TRACE("CloseHandle(0x%x)", handle);
+    KernelHandleTable().Close(handle);
     Ret(state, 0);
 }
 
 SVC(SvcResetSignal) {
-    LOG_TRACE("ResetSignal");
+    u32 handle = (u32)Arg(state, 0);
+    auto* ev = KernelHandleTable().Get<KEvent>(handle);
+    if (ev) ev->Clear();
     Ret(state, 0);
 }
 
 SVC(SvcWaitSynchronization) {
-    u32 handle = (u32)Arg(state, 0);
-    u64 timeout = Arg(state, 1);
-    LOG_DEBUG("WaitSynchronization(handle=0x%x, timeout=%lld)", handle, (s64)timeout);
-    // Phase P0: signal is always ready
-    Ret(state, 0);
+    u64 handles_ptr = Arg(state, 0);
+    u32 num_handles = (u32)Arg(state, 1);
+    s64 timeout = (s64)Arg(state, 2);
+
+    LOG_DEBUG("WaitSynchronization(ptr=0x%llx, n=%u, timeout=%lld)", handles_ptr, num_handles, timeout);
+
+    if (num_handles == 0 || !g_mem) {
+        if (timeout > 0) {
+            struct timespec ts;
+            ts.tv_sec = timeout / 1000000000LL;
+            ts.tv_nsec = timeout % 1000000000LL;
+            nanosleep(&ts, nullptr);
+        }
+        Ret(state, 0);
+        state->x[1] = 0;
+        return;
+    }
+
+    std::vector<u32> handles(num_handles);
+    for (u32 i = 0; i < num_handles; i++) {
+        u32 h;
+        g_mem->Read(handles_ptr + i * 4, &h);
+        handles[i] = h;
+    }
+
+    std::vector<KObject*> objects(num_handles);
+    for (u32 i = 0; i < num_handles; i++) {
+        objects[i] = KernelHandleTable().Get(handles[i]);
+    }
+
+    for (u32 i = 0; i < num_handles; i++) {
+        if (objects[i] && objects[i]->IsSignaled()) {
+            Ret(state, 0);
+            state->x[1] = i;
+            return;
+        }
+    }
+
+    if (timeout == 0) {
+        Ret(state, (u64)Result::TimedOut);
+        state->x[1] = 0;
+        return;
+    }
+
+    std::mutex wait_mtx;
+    std::condition_variable wait_cv;
+
+    for (u32 i = 0; i < num_handles; i++) {
+        if (objects[i]) objects[i]->RegisterWaiter(&wait_mtx, &wait_cv);
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(wait_mtx);
+
+        auto check_signaled = [&]() -> int {
+            for (u32 i = 0; i < num_handles; i++) {
+                if (objects[i] && objects[i]->IsSignaled()) return (int)i;
+            }
+            return -1;
+        };
+
+        int idx = check_signaled();
+        if (idx >= 0) {
+            for (u32 i = 0; i < num_handles; i++) {
+                if (objects[i]) objects[i]->UnregisterWaiter(&wait_cv);
+            }
+            Ret(state, 0);
+            state->x[1] = (u64)idx;
+            return;
+        }
+
+        if (timeout < 0) {
+            wait_cv.wait(lock, [&]() {
+                return check_signaled() >= 0;
+            });
+            idx = check_signaled();
+        } else {
+            auto dur = std::chrono::nanoseconds(timeout);
+            wait_cv.wait_for(lock, dur, [&]() {
+                return check_signaled() >= 0;
+            });
+            idx = check_signaled();
+        }
+
+        for (u32 i = 0; i < num_handles; i++) {
+            if (objects[i]) objects[i]->UnregisterWaiter(&wait_cv);
+        }
+
+        if (idx >= 0) {
+            Ret(state, 0);
+            state->x[1] = (u64)idx;
+        } else {
+            Ret(state, (u64)Result::TimedOut);
+            state->x[1] = 0;
+        }
+    }
 }
 
 SVC(SvcCancelSynchronization) {
@@ -191,13 +432,66 @@ SVC(SvcConnectToNamedPort) {
 
 SVC(SvcSendSyncRequest) {
     u32 session = (u32)Arg(state, 0);
-    LOG_TRACE("SendSyncRequest(session=0x%x)", session);
-    Ret(state, 0);
+    LOG_DEBUG("SendSyncRequest(session=0x%x)", session);
+
+    if (!g_mem) {
+        LOG_WARN("SendSyncRequest: no memory");
+        Ret(state, 0);
+        return;
+    }
+
+    u64 tls_base = GetEffectiveTlsBase();
+    u64 ipc_addr = tls_base + TLS_IPC_OFFSET;
+    u8 ipc_buf[TLS_IPC_SIZE];
+    std::memset(ipc_buf, 0, TLS_IPC_SIZE);
+
+    for (u64 i = 0; i < TLS_IPC_SIZE; i++) {
+        g_mem->Read(ipc_addr + i, &ipc_buf[i]);
+    }
+
+    u8 resp_buf[TLS_IPC_SIZE];
+    std::memset(resp_buf, 0, TLS_IPC_SIZE);
+    size_t resp_size = TLS_IPC_SIZE;
+
+    u32 result = IpcManager::Instance().HandleRequest(
+        session, ipc_buf, TLS_IPC_SIZE, resp_buf, &resp_size);
+
+    size_t write_size = (resp_size < TLS_IPC_SIZE) ? resp_size : TLS_IPC_SIZE;
+    for (size_t i = 0; i < write_size; i++) {
+        g_mem->Write(ipc_addr + i, resp_buf[i]);
+    }
+
+    Ret(state, result);
 }
 
 SVC(SvcSendSyncRequestWithUserBuffer) {
-    LOG_TRACE("SendSyncRequestWithUserBuffer");
-    Ret(state, 0);
+    u64 buf_addr = Arg(state, 0);
+    u64 buf_size = Arg(state, 1);
+    u32 session  = (u32)Arg(state, 2);
+    LOG_DEBUG("SendSyncRequestWithUserBuffer(buf=0x%llx, sz=%llu, session=0x%x)",
+              buf_addr, buf_size, session);
+
+    if (!g_mem || buf_addr == 0 || buf_size < 0x10) {
+        Ret(state, 0);
+        return;
+    }
+
+    u64 safe_size = (buf_size < 0x10000) ? buf_size : 0x10000;
+    std::vector<u8> req_buf(safe_size);
+    for (u64 i = 0; i < safe_size; i++)
+        g_mem->Read(buf_addr + i, &req_buf[i]);
+
+    std::vector<u8> resp_buf(safe_size, 0);
+    size_t resp_size = safe_size;
+
+    u32 result = IpcManager::Instance().HandleRequest(
+        session, req_buf.data(), safe_size, resp_buf.data(), &resp_size);
+
+    size_t write_size = (resp_size < safe_size) ? resp_size : safe_size;
+    for (size_t i = 0; i < write_size; i++)
+        g_mem->Write(buf_addr + i, resp_buf[i]);
+
+    Ret(state, result);
 }
 
 SVC(SvcSendAsyncRequest) {
@@ -302,9 +596,10 @@ SVC(SvcGetThreadContext3) {
 // ═══════════════════════════════════════════════════════════
 
 SVC(SvcCreateInterruptEvent) {
-    static u32 next_ie = 0x200;
-    LOG_DEBUG("CreateInterruptEvent → handle=0x%x", next_ie);
-    state->x[1] = next_ie++;
+    auto* ie = new KInterruptEvent();
+    u32 handle = KernelHandleTable().Create(ie);
+    LOG_DEBUG("CreateInterruptEvent → handle=0x%x", handle);
+    state->x[1] = handle;
     Ret(state, 0);
 }
 
@@ -322,9 +617,10 @@ SVC(SvcQueryIoMapping) {
 }
 
 SVC(SvcCreateDeviceAddressSpace) {
-    static u32 next_das = 0x300;
-    LOG_DEBUG("CreateDeviceAddressSpace → handle=0x%x", next_das);
-    state->x[1] = next_das++;
+    auto* das = new KDeviceAddressSpace();
+    u32 handle = KernelHandleTable().Create(das);
+    LOG_DEBUG("CreateDeviceAddressSpace → handle=0x%x", handle);
+    state->x[1] = handle;
     Ret(state, 0);
 }
 
@@ -346,10 +642,17 @@ SVC(SvcMapSharedMemory)   { LOG_TRACE("MapSharedMemory");   Ret(state, 0); }
 SVC(SvcUnmapSharedMemory) { LOG_TRACE("UnmapSharedMemory"); Ret(state, 0); }
 
 SVC(SvcCreateSession) {
-    static u32 next_sess = 0x400;
-    LOG_DEBUG("CreateSession → handle=0x%x", next_sess);
-    state->x[1] = next_sess++;
-    state->x[2] = next_sess++;
+    auto* s = new KSession();
+    u32 client = KernelHandleTable().Create(s);
+    auto* s2 = new KSession();
+    u32 server = KernelHandleTable().Create(s2);
+    s->client_handle = client;
+    s->server_handle = server;
+    s2->client_handle = client;
+    s2->server_handle = server;
+    LOG_DEBUG("CreateSession → client=0x%x server=0x%x", client, server);
+    state->x[1] = client;
+    state->x[2] = server;
     Ret(state, 0);
 }
 
@@ -372,10 +675,17 @@ SVC(SvcReplyAndReceiveWithUserBuffer) {
 }
 
 SVC(SvcCreatePort) {
-    static u32 next_port = 0x500;
-    LOG_DEBUG("CreatePort → handle=0x%x", next_port);
-    state->x[1] = next_port++;
-    state->x[2] = next_port++;
+    auto* p = new KPort();
+    u32 client = KernelHandleTable().Create(p);
+    auto* p2 = new KPort();
+    u32 server = KernelHandleTable().Create(p2);
+    p->client_port = client;
+    p->server_port = server;
+    p2->client_port = client;
+    p2->server_port = server;
+    LOG_DEBUG("CreatePort → client=0x%x server=0x%x", client, server);
+    state->x[1] = client;
+    state->x[2] = server;
     Ret(state, 0);
 }
 
@@ -396,9 +706,10 @@ SVC(SvcGetProcessInfo) {
 }
 
 SVC(SvcCreateResourceLimit) {
-    static u32 next_rl = 0x700;
-    state->x[1] = next_rl++;
-    LOG_DEBUG("CreateResourceLimit → handle=0x%x", (u32)state->x[1]);
+    auto* rl = new KResourceLimit();
+    u32 handle = KernelHandleTable().Create(rl);
+    state->x[1] = handle;
+    LOG_DEBUG("CreateResourceLimit → handle=0x%x", handle);
     Ret(state, 0);
 }
 
@@ -432,9 +743,10 @@ SVC(SvcSetProcessActivity) {
 }
 
 SVC(SvcCreateSharedMemory) {
-    static u32 next_sm = 0x800;
-    state->x[1] = next_sm++;
-    LOG_DEBUG("CreateSharedMemory → handle=0x%x", (u32)state->x[1]);
+    auto* sm = new KSharedMemory();
+    u32 handle = KernelHandleTable().Create(sm);
+    state->x[1] = handle;
+    LOG_DEBUG("CreateSharedMemory → handle=0x%x", handle);
     Ret(state, 0);
 }
 
