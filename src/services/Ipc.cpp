@@ -194,6 +194,22 @@ struct CmifInHeader { u32 magic, version, command_id, token; };
 // CMIF OutHeader (16 bytes after 16-byte alignment)
 struct CmifOutHeader { u32 magic, version, result, token; };
 
+// CMIF Domain OutHeader (16 bytes)
+struct CmifDomainOutHeader {
+    u32 num_out_objects;
+    u32 padding[3];
+};
+
+// CMIF Domain InHeader (16 bytes)
+struct CmifDomainInHeader {
+    u8  type;
+    u8  num_in_objects;
+    u16 data_size;
+    u32 object_id;
+    u32 padding;
+    u32 token;
+};
+
 // 计算 CMIF data 的对齐起始偏移（相对于 data_words 缓冲区的 16 字节对齐）
 static size_t CalcCmifAlign(size_t dw_off) {
     return (dw_off + 15) & ~15;
@@ -214,15 +230,11 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     std::memcpy(&req_hdr, data, sizeof(req_hdr));
     size_t dw_off = CalcDataWordsOffset(data, size);
 
-    // 检测请求是否被上一次响应污染（原地 IPC 缓冲复用）
+    // 检测请求是否被上一次响应污染（原地 IPC 缓冲复用）。
+    // 注意：不使用 has_special_header + num_copy_handles/move_handles>0 来检测，
+    // 因为 libnx 3.x/4.x 的域请求中可能包含有效的 copy handle（如进程 PID 句柄），
+    // 会被误判为回收。
     bool recycled = false;
-    if (req_hdr.has_special_header && size >= sizeof(HipcHeader) + 4) {
-        HipcSpecialHeader sh;
-        std::memcpy(&sh, data + sizeof(HipcHeader), sizeof(sh));
-        if (sh.num_copy_handles > 0 || sh.num_move_handles > 0) {
-            recycled = true;
-        }
-    }
     // 检测 SFCO magic（CMIF 响应头）出现在 data_words 中，表明请求是上一轮响应
     if (!recycled && req_hdr.num_data_words > 0) {
         size_t check_off = CalcCmifAlign(dw_off);
@@ -244,21 +256,22 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     ParsedRecvList recv_list = ParseRecvList(data, req_hdr, dw_off);
 
     // ── CMIF 请求解析 ─────────────────────────────────
-    // domain 模式: CmifInHeader 在 data_words + 4 处（无 16 字节对齐）
-    // 非 domain: CmifInHeader 在 16 字节对齐处
-    size_t cmif_off = session->is_domain ? (dw_off + 4) : CalcCmifAlign(dw_off);
+    // libnx 的 cmifGetAlignedDataStart 总是 16 字节对齐于 data_words，
+    // 不管是否域模式。域模式时 CmifDomainInHeader(16 字节) 在对齐处，
+    // CmifInHeader 紧随其后。
+    size_t cmif_off = CalcCmifAlign(dw_off);
     u32 cmd_id = 0;
     const u8* raw_in = nullptr;
     size_t raw_in_size = 0;
 
     u32 cmif_token = 0;
 
-    // 如果 session 是 domain 模式，第一个 data_word 是 object_id，跳过它
-    size_t domain_skip = session->is_domain ? 4 : 0;
+    // 域模式: 在 CmifDomainInHeader 之后跳过 16 字节到达 CmifInHeader
+    size_t domain_skip = session->is_domain ? sizeof(CmifDomainInHeader) : 0;
     if (req_hdr.num_data_words > 0) {
-        // 尝试解析 CmifInHeader
+        // 尝试解析 CmifInHeader（域模式时在 CmifDomainInHeader 之后16字节）
         CmifInHeader cmif_in = {};
-        std::memcpy(&cmif_in, data + cmif_off, sizeof(cmif_in));
+        std::memcpy(&cmif_in, data + cmif_off + domain_skip, sizeof(cmif_in));
 
         if (cmif_in.magic == CMIF_IN_MAGIC) {
             // ✅ CMIF 格式请求
@@ -306,6 +319,9 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     u8* handle_pos = nullptr;
     u32 num_copy_handles = 0;
     u32 num_move_handles = 0;
+    // 域响应输出对象 ID 追踪
+    u32 domain_out_objects[8] = {};
+    u32 domain_out_count = 0;
 
     // 保存服务名（session 指针可能在 CreateSession 后被失效）
     std::string svc_name = session->service_name;
@@ -357,7 +373,8 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // 仅对普通请求(type=4)有效，控制命令(type=5 如 ConvertCurrentObjectToDomain)
     // 不应提取 move handle，否则 domain_id 会被误提取为句柄。
     bool is_control = (req_hdr.type == 5);
-    if (needs_move_handle && !is_control && resp_remaining >= 4 + 4) {
+    // 域模式 session 不使用 move handle，使用 domain out object ID 代替
+    if (needs_move_handle && !is_control && !session->is_domain && resp_remaining >= 4 + 4) {
         shdr_pos = resp_ptr;
         handle_pos = resp_ptr + 4;
         if (needs_copy_handle) {
@@ -446,10 +463,21 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     if (handled && handle_pos && !is_control && raw_out_max >= 4) {
         u32 move_handle = 0;
         std::memcpy(&move_handle, raw_out, sizeof(move_handle));
-        if (move_handle != 0) { // 验证是有效句柄 (session 0x1000+ 或 kernel 0xD000+)
-            LOG_DEBUG("IPC: move handle 0x%x for '%s' cmd=%u",
-                      move_handle, svc_name_cstr, cmd_id);
-            std::memcpy(handle_pos, &move_handle, sizeof(move_handle));
+        if (move_handle != 0) {
+            if (session && session->is_domain) {
+                // 域模式：不提取 move handle，分配递增的对象 ID
+                u32 obj_id = session->next_object_id++;
+                LOG_DEBUG("IPC: domain object 0x%x (session=0x%x) for '%s' cmd=%u",
+                          obj_id, move_handle, svc_name_cstr, cmd_id);
+                if (domain_out_count < 8) {
+                    domain_out_objects[domain_out_count++] = obj_id;
+                }
+            } else {
+                // 非域模式：提取为 move handle
+                LOG_DEBUG("IPC: move handle 0x%x for '%s' cmd=%u",
+                          move_handle, svc_name_cstr, cmd_id);
+                std::memcpy(handle_pos, &move_handle, sizeof(move_handle));
+            }
             raw_out_max = 0; // handle 已提取到头部，清除数据
         }
     }
@@ -481,30 +509,51 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         }
 
         // ── 构建 CMIF 响应 ──────────────────────────────
-        // Control 命令(type=5): CmifOutHeader 在 data_words 开始处（无对齐）
-        // Request 命令(type=4): CmifOutHeader 在 16 字节对齐处
+        // libnx 的 cmifParseResponse 始终用 cmifGetAlignedDataStart 定位
+        // CmifOutHeader，即 16 字节对齐于 data_words 起始处。控制命令(type=5)
+        // 的响应也不例外。所以必须始终对齐，不区分控制/请求命令。
+        // 域模式(session->is_domain)的响应在 CmifOutHeader 前有 CmifDomainOutHeader
+        // (16 字节 + num_out_objects*sizeof(u32) 的对象 ID 在数据末尾)。
         size_t raw_off = (size_t)(raw_out - response);
-        size_t cmif_out_off = is_control ? raw_off : CalcCmifAlign(raw_off);
+        size_t cmif_out_off = CalcCmifAlign(raw_off);
         
-        // cmif_out_off 处放 CmifOutHeader (16 bytes)
-        // cmif_out_off + 16 处放 service 数据
-        size_t cmif_out_end = cmif_out_off + sizeof(CmifOutHeader);
+        // 域模式的额外头部: 仅对普通请求(type=4)的响应包含 CmifDomainOutHeader。
+        // 控制命令(type=5)使用非域格式响应，即使 session 已转换为域模式。
+        bool is_domain_resp = session && session->is_domain && !is_control;
+        size_t domain_hdr_sz = is_domain_resp ? sizeof(CmifDomainOutHeader) : 0;
+        
+        // CmifOutHeader 在 cmif_out_off + domain_hdr_sz 处
+        size_t cmif_hdr_off = cmif_out_off + domain_hdr_sz;
+        size_t cmif_out_end = cmif_hdr_off + sizeof(CmifOutHeader);
         size_t total_data_end = cmif_out_end + raw_out_max;
         
         // 将 service 输出数据后移到 CmifOutHeader 之后
         if (raw_out_max > 0 && cmif_out_end > raw_off) {
-            // 对于 Control 命令，raw_off==cmif_out_off，需要整体后移
             memmove(response + cmif_out_end, response + raw_off, raw_out_max);
         }
-        // 对于 Control 命令：raw_out 已经在 cmif_out_off 处，如果raw_off == cmif_out_off
-        // 且 raw_out_max==0，无需移动
+        
+        // 写入 CmifDomainOutHeader（域模式）
+        if (is_domain_resp) {
+            CmifDomainOutHeader domain_hdr = {};
+            domain_hdr.num_out_objects = domain_out_count;
+            std::memcpy(response + cmif_out_off, &domain_hdr, sizeof(domain_hdr));
+
+            // 在服务数据之后写入输出对象 ID（libnx 在 cmifParseResponse 的
+            // objects 指针处读取它们）
+            u8* obj_pos = response + cmif_out_end + raw_out_max;
+            for (u32 i = 0; i < domain_out_count; i++) {
+                std::memcpy(obj_pos + i * 4, &domain_out_objects[i], 4);
+            }
+            // 更新 total_data_end 包含对象 ID
+            total_data_end += domain_out_count * sizeof(u32);
+        }
         
         // 写入 CmifOutHeader（回填请求中的 token）
         CmifOutHeader cmif_out = {};
         cmif_out.magic  = CMIF_OUT_MAGIC;
         cmif_out.token  = cmif_token;
         cmif_out.result = 0;
-        std::memcpy(response + cmif_out_off, &cmif_out, sizeof(cmif_out));
+        std::memcpy(response + cmif_hdr_off, &cmif_out, sizeof(cmif_out));
         
         // 计算总 data_words 大小（从数据偏移到结尾，对齐到 4 字节）
         size_t total_data_size = total_data_end - raw_off;

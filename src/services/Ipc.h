@@ -71,6 +71,7 @@ private:
         std::string service_name;
         ServiceBase* service = nullptr;
         bool is_domain = false; // 是否已转为 domain 模式
+        u32 next_object_id = 1; // 域模式下下一个对象 ID（递增分配）
     };
     std::unordered_map<std::string, ServiceBase*> services_;
     std::vector<Session> sessions_;

@@ -1,0 +1,559 @@
+https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services?ref=v4.0.0
+
+[
+  {
+    "name": "acc.c",
+    "path": "nx/source/services/acc.c",
+    "sha": "bcdabe38a319cb889368866849ad11a2934b93c3",
+    "size": 6907,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/acc.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/acc.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/bcdabe38a319cb889368866849ad11a2934b93c3",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/acc.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/acc.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/bcdabe38a319cb889368866849ad11a2934b93c3",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/acc.c"
+    }
+  },
+  {
+    "name": "apm.c",
+    "path": "nx/source/services/apm.c",
+    "sha": "02650b83e73bbd456952679b7decb47d844dbe57",
+    "size": 1655,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/apm.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/apm.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/02650b83e73bbd456952679b7decb47d844dbe57",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/apm.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/apm.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/02650b83e73bbd456952679b7decb47d844dbe57",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/apm.c"
+    }
+  },
+  {
+    "name": "applet.c",
+    "path": "nx/source/services/applet.c",
+    "sha": "37003c80ea668cc03d1dd7fd7e032793dd7464e0",
+    "size": 130764,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/applet.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/applet.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/37003c80ea668cc03d1dd7fd7e032793dd7464e0",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/applet.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/applet.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/37003c80ea668cc03d1dd7fd7e032793dd7464e0",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/applet.c"
+    }
+  },
+  {
+    "name": "async.c",
+    "path": "nx/source/services/async.c",
+    "sha": "9c637112e1575ff0b97743e73fe9828b60c0b643",
+    "size": 3378,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/async.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/async.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/9c637112e1575ff0b97743e73fe9828b60c0b643",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/async.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/async.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/9c637112e1575ff0b97743e73fe9828b60c0b643",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/async.c"
+    }
+  },
+  {
+    "name": "auddev.c",
+    "path": "nx/source/services/auddev.c",
+    "sha": "a900b6a1346220497dcca92f44263c89a45ba1c4",
+    "size": 2289,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/auddev.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/auddev.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/a900b6a1346220497dcca92f44263c89a45ba1c4",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/auddev.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/auddev.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/a900b6a1346220497dcca92f44263c89a45ba1c4",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/auddev.c"
+    }
+  },
+  {
+    "name": "audin.c",
+    "path": "nx/source/services/audin.c",
+    "sha": "5b2c96b190316f0ff76bfec051c8bff6eeb7717d",
+    "size": 6772,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/audin.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/audin.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/5b2c96b190316f0ff76bfec051c8bff6eeb7717d",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/audin.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/audin.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/5b2c96b190316f0ff76bfec051c8bff6eeb7717d",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/audin.c"
+    }
+  },
+  {
+    "name": "audout.c",
+    "path": "nx/source/services/audout.c",
+    "sha": "c1d6ac8c33c0897616e2d58a29b6d23adec2ed68",
+    "size": 8100,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/audout.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/audout.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/c1d6ac8c33c0897616e2d58a29b6d23adec2ed68",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/audout.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/audout.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/c1d6ac8c33c0897616e2d58a29b6d23adec2ed68",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/audout.c"
+    }
+  },
+  {
+    "name": "audren.c",
+    "path": "nx/source/services/audren.c",
+    "sha": "07dda7e26a15acb921c5ef4e56047aa809099b72",
+    "size": 7114,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/audren.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/audren.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/07dda7e26a15acb921c5ef4e56047aa809099b72",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/audren.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/audren.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/07dda7e26a15acb921c5ef4e56047aa809099b72",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/audren.c"
+    }
+  },
+  {
+    "name": "bpc.c",
+    "path": "nx/source/services/bpc.c",
+    "sha": "ea462cdb924b730a9b43c67f7315e80d198789bf",
+    "size": 953,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/bpc.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/bpc.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/ea462cdb924b730a9b43c67f7315e80d198789bf",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/bpc.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/bpc.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/ea462cdb924b730a9b43c67f7315e80d198789bf",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/bpc.c"
+    }
+  },
+  {
+    "name": "bsd.c",
+    "path": "nx/source/services/bsd.c",
+    "sha": "8c0d68c538b64644bc5734384e4f20f5822e0f56",
+    "size": 18277,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/bsd.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/bsd.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/8c0d68c538b64644bc5734384e4f20f5822e0f56",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/bsd.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/bsd.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/8c0d68c538b64644bc5734384e4f20f5822e0f56",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/bsd.c"
+    }
+  },
+  {
+    "name": "bt.c",
+    "path": "nx/source/services/bt.c",
+    "sha": "615ab23d9b4923048550905217969cbdb788ba17",
+    "size": 6086,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/bt.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/bt.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/615ab23d9b4923048550905217969cbdb788ba17",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/bt.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/bt.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/615ab23d9b4923048550905217969cbdb788ba17",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/bt.c"
+    }
+  },
+  {
+    "name": "btdrv.c",
+    "path": "nx/source/services/btdrv.c",
+    "sha": "3d75df627b7892ab2f20202cefbc69f33fd3a8a8",
+    "size": 38240,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/btdrv.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/btdrv.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/3d75df627b7892ab2f20202cefbc69f33fd3a8a8",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/btdrv.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/btdrv.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/3d75df627b7892ab2f20202cefbc69f33fd3a8a8",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/btdrv.c"
+    }
+  },
+  {
+    "name": "btm.c",
+    "path": "nx/source/services/btm.c",
+    "sha": "8653eb56b93a14aaa99516917ce0ee3bba27e16c",
+    "size": 19337,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/btm.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/btm.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/8653eb56b93a14aaa99516917ce0ee3bba27e16c",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/btm.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/btm.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/8653eb56b93a14aaa99516917ce0ee3bba27e16c",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/btm.c"
+    }
+  },
+  {
+    "name": "btmsys.c",
+    "path": "nx/source/services/btmsys.c",
+    "sha": "ceef6060e130492025e25682d43c971984318b44",
+    "size": 3101,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/btmsys.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/btmsys.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/ceef6060e130492025e25682d43c971984318b44",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/btmsys.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/btmsys.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/ceef6060e130492025e25682d43c971984318b44",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/btmsys.c"
+    }
+  },
+  {
+    "name": "btmu.c",
+    "path": "nx/source/services/btmu.c",
+    "sha": "48a4d522520719b02b4c91ae0ccbee1d8d4068d6",
+    "size": 11258,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/btmu.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/btmu.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/48a4d522520719b02b4c91ae0ccbee1d8d4068d6",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/btmu.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/btmu.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/48a4d522520719b02b4c91ae0ccbee1d8d4068d6",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/btmu.c"
+    }
+  },
+  {
+    "name": "capmtp.c",
+    "path": "nx/source/services/capmtp.c",
+    "sha": "35e82e7e70b4a91ff4855d103f146ecc55c4953d",
+    "size": 3757,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capmtp.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capmtp.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/35e82e7e70b4a91ff4855d103f146ecc55c4953d",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/capmtp.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capmtp.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/35e82e7e70b4a91ff4855d103f146ecc55c4953d",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capmtp.c"
+    }
+  },
+  {
+    "name": "caps.c",
+    "path": "nx/source/services/caps.c",
+    "sha": "304eacadadf7c8b00d60882e527af875f7c6a144",
+    "size": 197,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/caps.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/caps.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/304eacadadf7c8b00d60882e527af875f7c6a144",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/caps.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/caps.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/304eacadadf7c8b00d60882e527af875f7c6a144",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/caps.c"
+    }
+  },
+  {
+    "name": "capsa.c",
+    "path": "nx/source/services/capsa.c",
+    "sha": "257e55127f217207e505b75a73058c5296e58cb8",
+    "size": 19405,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capsa.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capsa.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/257e55127f217207e505b75a73058c5296e58cb8",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/capsa.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capsa.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/257e55127f217207e505b75a73058c5296e58cb8",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capsa.c"
+    }
+  },
+  {
+    "name": "capsc.c",
+    "path": "nx/source/services/capsc.c",
+    "sha": "508936f148ddf43158c8f0afd60482aec57d0789",
+    "size": 13042,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capsc.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capsc.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/508936f148ddf43158c8f0afd60482aec57d0789",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/capsc.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capsc.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/508936f148ddf43158c8f0afd60482aec57d0789",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capsc.c"
+    }
+  },
+  {
+    "name": "capsdc.c",
+    "path": "nx/source/services/capsdc.c",
+    "sha": "7297e58abde4a750cda04aa2cfc8752ea76bfc60",
+    "size": 1179,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capsdc.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capsdc.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/7297e58abde4a750cda04aa2cfc8752ea76bfc60",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/capsdc.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capsdc.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/7297e58abde4a750cda04aa2cfc8752ea76bfc60",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capsdc.c"
+    }
+  },
+  {
+    "name": "capssc.c",
+    "path": "nx/source/services/capssc.c",
+    "sha": "8336d509f1733446e473b159c602a2293a9b724c",
+    "size": 3103,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capssc.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capssc.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/8336d509f1733446e473b159c602a2293a9b724c",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/capssc.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capssc.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/8336d509f1733446e473b159c602a2293a9b724c",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capssc.c"
+    }
+  },
+  {
+    "name": "capssu.c",
+    "path": "nx/source/services/capssu.c",
+    "sha": "26f90a77a7f3263945cedf36b967e9d770e5cab3",
+    "size": 5536,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capssu.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capssu.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/26f90a77a7f3263945cedf36b967e9d770e5cab3",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/capssu.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capssu.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/26f90a77a7f3263945cedf36b967e9d770e5cab3",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capssu.c"
+    }
+  },
+  {
+    "name": "capsu.c",
+    "path": "nx/source/services/capsu.c",
+    "sha": "f9bd89194dd5cce73c5866b6e5908fa58233cd68",
+    "size": 14871,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capsu.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capsu.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/f9bd89194dd5cce73c5866b6e5908fa58233cd68",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/capsu.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/capsu.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/f9bd89194dd5cce73c5866b6e5908fa58233cd68",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/capsu.c"
+    }
+  },
+  {
+    "name": "clkrst.c",
+    "path": "nx/source/services/clkrst.c",
+    "sha": "476c7beaca06f266091024c3c466465115071dcb",
+    "size": 1136,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/clkrst.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/clkrst.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/476c7beaca06f266091024c3c466465115071dcb",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/clkrst.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/clkrst.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/476c7beaca06f266091024c3c466465115071dcb",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/clkrst.c"
+    }
+  },
+  {
+    "name": "csrng.c",
+    "path": "nx/source/services/csrng.c",
+    "sha": "fe0cfde6bcff4ac3a0bf0915627747736a129f47",
+    "size": 591,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/csrng.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/csrng.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/fe0cfde6bcff4ac3a0bf0915627747736a129f47",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/csrng.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/csrng.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/fe0cfde6bcff4ac3a0bf0915627747736a129f47",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/csrng.c"
+    }
+  },
+  {
+    "name": "ectx.c",
+    "path": "nx/source/services/ectx.c",
+    "sha": "4f148b57cddc01c51917cc5fdf2d74c6ce23ee64",
+    "size": 1186,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/ectx.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/ectx.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/4f148b57cddc01c51917cc5fdf2d74c6ce23ee64",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/ectx.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/ectx.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/4f148b57cddc01c51917cc5fdf2d74c6ce23ee64",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/ectx.c"
+    }
+  },
+  {
+    "name": "fan.c",
+    "path": "nx/source/services/fan.c",
+    "sha": "1a94d14751403ada942c6e23897b4e7f6a12e194",
+    "size": 948,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fan.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fan.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/1a94d14751403ada942c6e23897b4e7f6a12e194",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/fan.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fan.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/1a94d14751403ada942c6e23897b4e7f6a12e194",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fan.c"
+    }
+  },
+  {
+    "name": "fatal.c",
+    "path": "nx/source/services/fatal.c",
+    "sha": "dff48f57ccc3f8df2aa785b74395c6cd65310c11",
+    "size": 2051,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fatal.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fatal.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/dff48f57ccc3f8df2aa785b74395c6cd65310c11",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/fatal.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fatal.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/dff48f57ccc3f8df2aa785b74395c6cd65310c11",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fatal.c"
+    }
+  },
+  {
+    "name": "friends.c",
+    "path": "nx/source/services/friends.c",
+    "sha": "4195f203551019bfcef4e4472fd89305ddb907a7",
+    "size": 1102,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/friends.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/friends.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/4195f203551019bfcef4e4472fd89305ddb907a7",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/friends.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/friends.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/4195f203551019bfcef4e4472fd89305ddb907a7",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/friends.c"
+    }
+  },
+  {
+    "name": "fs.c",
+    "path": "nx/source/services/fs.c",
+    "sha": "7667e8122fbed93203e9e0e376ff154bd356faf8",
+    "size": 32690,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fs.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fs.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/7667e8122fbed93203e9e0e376ff154bd356faf8",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/fs.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fs.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/7667e8122fbed93203e9e0e376ff154bd356faf8",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fs.c"
+    }
+  },
+  {
+    "name": "fsldr.c",
+    "path": "nx/source/services/fsldr.c",
+    "sha": "03f43edb962b415b959cebc7f7e22b2381e349f9",
+    "size": 2325,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fsldr.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fsldr.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/03f43edb962b415b959cebc7f7e22b2381e349f9",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/fsldr.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fsldr.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/03f43edb962b415b959cebc7f7e22b2381e349f9",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fsldr.c"
+    }
+  },
+  {
+    "name": "fspr.c",
+    "path": "nx/source/services/fspr.c",
+    "sha": "8afbf2cc98e8e196372956bb45eaac84c4f81ae7",
+    "size": 2577,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fspr.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fspr.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/8afbf2cc98e8e196372956bb45eaac84c4f81ae7",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/fspr.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/fspr.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/8afbf2cc98e8e196372956bb45eaac84c4f81ae7",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/fspr.c"
+    }
+  },
+  {
+    "name": "gpio.c",
+    "path": "nx/source/services/gpio.c",
+    "sha": "2f2904f920c36ff1acc79a3306b943724e85c6a6",
+    "size": 5128,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/gpio.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/gpio.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/2f2904f920c36ff1acc79a3306b943724e85c6a6",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/gpio.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/gpio.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/2f2904f920c36ff1acc79a3306b943724e85c6a6",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/gpio.c"
+    }
+  },
+  {
+    "name": "grc.c",
+    "path": "nx/source/services/grc.c",
+    "sha": "f5368939ac9c6cee5958754bd757951f9ba30e57",
+    "size": 12686,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/grc.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/grc.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/f5368939ac9c6cee5958754bd757951f9ba30e57",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/grc.c",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/grc.c?ref=v4.0.0",
+      "git": "https://api.github.com/repos/switchbrew/libnx/git/blobs/f5368939ac9c6cee5958754bd757951f9ba30e57",
+      "html": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/grc.c"
+    }
+  },
+  {
+    "name": "hid.c",
+    "path": "nx/source/services/hid.c",
+    "sha": "4fee04d1ea5071a86e15afa85bad47d00d8cf4aa",
+    "size": 80381,
+    "url": "https://api.github.com/repos/switchbrew/libnx/contents/nx/source/services/hid.c?ref=v4.0.0",
+    "html_url": "https://github.com/switchbrew/libnx/blob/v4.0.0/nx/source/services/hid.c",
+    "git_url": "https://api.github.com/repos/switchbrew/libnx/git/blobs/4fee04d1ea5071a86e15afa85bad47d00d8cf4aa",
+    "download_url": "https://raw.githubusercontent.com/switchbrew/libnx/v4.0.0/nx/source/services/hid.c",
+    "ty
+
+[… truncated 43535 chars …]
