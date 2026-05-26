@@ -98,6 +98,12 @@ cmake --build build
 - [x] P0 #14: Depth/stencil state → Metal (depth test/write, stencil front/back ops, two-sided stencil, depth bounds)
 - [x] P0 #15: Engine3D array method dispatch (viewport, scissor, blend, color write mask, vertex arrays, stencil ops, polygon offset, alpha test)
 
+**P1** — Rendering & Services (In Progress)
+- [x] P1 #1: VI BufferQueue 双缓冲帧交换 (DequeueBuffer/QueueBuffer/AcquireBuffer/ReleaseBuffer + 三缓冲)
+- [x] P1 #2: HID Npad 共享内存布局 (按键/摇杆状态, BufferQueue 生产者/消费者模型)
+- [ ] P1 #3: NvMap NvHost 完整实现 (GPU 地址空间映射, buffer 分配提交)
+- [ ] P1 #4: Fs 服务补全 (目录遍历, 文件属性, SaveData)
+
 **Phase 3** — Services & IPC (Complete)
 - [x] SM service (service manager)
 - [x] VI service (display/vsync)

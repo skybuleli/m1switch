@@ -4,6 +4,14 @@
 #include "gpu/shader/ShaderManager.h"
 #include <cstring>
 
+// VI 帧缓冲查询 API (来自 Vi.cpp)
+extern "C" {
+u64 Vi_GetCurrentFramebuffer();
+u32 Vi_GetFramebufferWidth();
+u32 Vi_GetFramebufferHeight();
+u32 Vi_GetFramebufferStride();
+}
+
 extern "C" {
 void Input_Poll(void);
 void Input_WriteToHidSharedMemory(u8* mem, u64 size);
@@ -61,25 +69,21 @@ void Input_WriteToHidSharedMemory(u8* mem, u64 size);
     id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
     MTLRenderPassDescriptor* desc = view.currentRenderPassDescriptor;
     if (desc && _rnd) {
-        // ── Check for VI framebuffer data from guest ─────
-        // VI allocates its framebuffer at guest address 0xE0000000 (1280x720 BGRA8).
-        // If the game writes there, we blit it to screen when no 3D draws are active.
+        // ── 从 VI BufferQueue 获取当前帧缓冲 ─────
         if (_core) {
             Memory& mem = _core->GetMemory();
-            static constexpr u64 VI_FB_ADDR = 0xE0000000;
-            static constexpr u32 VI_FB_WIDTH = 1280;
-            static constexpr u32 VI_FB_HEIGHT = 720;
-            static constexpr u32 VI_FB_STRIDE = 1280 * 4;
+            u64 fb_addr = Vi_GetCurrentFramebuffer();
+            u32 fb_width = Vi_GetFramebufferWidth();
+            u32 fb_height = Vi_GetFramebufferHeight();
+            u32 fb_stride = Vi_GetFramebufferStride();
 
-            u8* fb_ptr = mem.Pointer(VI_FB_ADDR);
+            u8* fb_ptr = mem.Pointer(fb_addr);
             if (fb_ptr) {
-                // Check if the framebuffer has been written to (non-zero first pixel)
-                // by looking at the header marker set by ViService
                 u32 marker;
                 std::memcpy(&marker, fb_ptr, 4);
                 if (marker != 0) {
-                    _rnd->SetFramebufferSource(fb_ptr, VI_FB_WIDTH, VI_FB_HEIGHT,
-                                                VI_FB_STRIDE, 4);
+                    _rnd->SetFramebufferSource(fb_ptr, fb_width, fb_height,
+                                                fb_stride, 4);
                 }
             }
         }
@@ -87,7 +91,7 @@ void Input_WriteToHidSharedMemory(u8* mem, u64 size);
         _rnd->RenderFrame(cmdBuf, desc);
     }
 
-    // ── Poll input every frame ──────────────────────────
+    // ── 轮询输入 ──────────────────────────────────────
     if (_core) {
         Input_Poll();
         Memory& mem = _core->GetMemory();
