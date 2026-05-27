@@ -67,7 +67,9 @@ void EmulatorCore::InitServices() {
     // 预先映射 HID 共享内存，供 EmuScreenView::drawInMTKView 每帧写入输入状态
     memory_.MapPhysical(0xE1000000, 0x40000, Memory::Permission::RW);
 
-    // 注意: 不可映射 0x20000000，会导致 host 进程内存损坏
+    // 预先映射 GPU 地址空间 (0x20000000-0x20FFFFFF, 16MB)
+    // 现在 Memory 构造已预留整个 4GB，此映射不再冲突
+    memory_.MapPhysical(0x20000000, 0x1000000, Memory::Permission::RW);
 
     tracker_.SetMemory(&memory_);
     ServiceNv_SetMemory(&memory_);
