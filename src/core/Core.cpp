@@ -67,9 +67,14 @@ void EmulatorCore::InitServices() {
     // 预先映射 HID 共享内存，供 EmuScreenView::drawInMTKView 每帧写入输入状态
     memory_.MapPhysical(0xE1000000, 0x40000, Memory::Permission::RW);
 
-    // 预先映射 GPU 地址空间起始 (0x20000000-0x20FFFFFF, 16MB)
-    // Switch GPU GMMU 在此范围分配 GPU 虚拟地址，SDL2/Mesa 硬编码使用此范围
-    memory_.MapPhysical(0x20000000, 0x1000000, Memory::Permission::RW);
+    // 预先映射 GPU 地址空间起始 (0x20000000-0x2FFFFFFF, 256MB)
+    // OpenRomFS 后 guest 在此范围存取数据 (可能是 RomFS 映射地址)
+    {
+        auto r = memory_.MapPhysical(0x20000000, 0x10000000, Memory::Permission::RW);
+        if (Failed(r)) {
+            LOG_ERROR("GPU address space map failed at 0x20000000: %d", (int)r);
+        }
+    }
 
     tracker_.SetMemory(&memory_);
     ServiceNv_SetMemory(&memory_);
