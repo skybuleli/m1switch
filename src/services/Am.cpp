@@ -98,21 +98,32 @@ public:
     bool HandleCommand(u32 cmd_id, const u8* in, size_t in_sz,
                        u8* out, size_t* out_sz) override {
         switch (cmd_id) {
-        case 0: // GetEventHandle — 返回 0（appletMainLoop 会 WaitSync handle=0）
-            LOG_DEBUG("ICommonStateGetter: GetEventHandle → returning 0 (auto-signal)");
-            if (*out_sz >= 4) {
-                u32 zero = 0;
-                std::memcpy(out, &zero, 4);
-                *out_sz = 4;
+        case 0: // GetEventHandle — 返回真实 KEvent (立即 signal)
+            LOG_DEBUG("ICommonStateGetter: GetEventHandle");
+            {
+                auto* ev = new KEvent();
+                ev->Signal(); // 立即 signal, 使 WaitSynchronization 立即返回
+                u32 ev_handle = KernelHandleTable().Create(ev);
+                if (*out_sz >= 4) {
+                    std::memcpy(out, &ev_handle, 4);
+                    *out_sz = 4;
+                }
+                LOG_DEBUG("ICommonStateGetter: GetEventHandle → handle=0x%x", ev_handle);
             }
             return true;
 
         case 1: // ReceiveMessage — 返回 AppletMessage
             LOG_DEBUG("ICommonStateGetter: ReceiveMessage");
-            // 立即返回 ExitRequest(4)，让 libnx 的 appletMainLoop 退出
-            // 从而允许用户代码执行到 main()
+            // 第一次返回 FocusStateChanged(0xF) 用于 applet 初始化
+            // 后续返回 ExitRequest(4) 使 appletMainLoop 退出
             {
-                u32 msg = 4; // AppletMessage_ExitRequest
+                // 永远返回 FocusStateChanged，让 applet 初始化完成
+                // appletInitialize 在收到 FocusStateChanged 后会调用
+                // SetFocusHandlingMode，然后循环直到 applet 就绪
+                // 本模拟器中 applet 总是就绪，所以处理完 FocusStateChanged 后
+                // 下一次调用应返回 Resume(0x10) 以完成初始化
+                static thread_local int msg_count = 0;
+                u32 msg = (msg_count++ == 0) ? 0xF : 0x10; // FocusStateChanged → Resume
                 if (*out_sz >= 4) {
                     std::memcpy(out, &msg, 4);
                     *out_sz = 4;

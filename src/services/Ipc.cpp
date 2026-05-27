@@ -683,6 +683,15 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     std::memcpy(response, &resp_hdr, sizeof(HipcHeader));
 
     // 调试：输出 IPC 响应 hex dump
+    if (cmd_id == 0 && sname == "appletOE") {
+        // GetEventHandle 响应完整 dump
+        char full_hex[256] = {};
+        size_t dump_sz = *resp_size < 64 ? *resp_size : 64;
+        for (size_t i = 0; i < dump_sz; i++)
+            snprintf(full_hex + i*2, sizeof(full_hex) - i*2, "%02x", response[i]);
+        LOG_INFO("IPC RESP FULL cmd=0 appletOE sz=%zu raw_off=%zu ndw=%u: %s",
+                  *resp_size, (size_t)(raw_out - response), resp_hdr.num_data_words, full_hex);
+    }
     LOG_DEBUG("IPC RESP cmd=%u session=0x%x sz=%zu hex=%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x",
               cmd_id, session_handle, *resp_size,
               response[0],response[1],response[2],response[3],

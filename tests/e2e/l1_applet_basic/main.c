@@ -1,6 +1,5 @@
-// ── L1: Applet 服务 — 服务可用性测试 ──────────────────────
-// 只测试 appletOE: 服务是否可通过 smGetService 获取
-// 不调用 appletInitialize（会触发事件等待循环）
+// ── L1: Applet 服务可用性测试 ────────────────────────────
+// smGetService("appletOE:") 验证服务存在
 #include <switch.h>
 #include <stdio.h>
 #include <string.h>

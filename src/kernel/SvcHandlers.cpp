@@ -395,15 +395,9 @@ SVC(SvcWaitSynchronization) {
     for (u32 i = 0; i < num_handles; i++) {
         if (handles[i] == 0xE0000001 || handles[i] == 0) {
             LOG_INFO("WaitSynchronization: handle 0x%x auto-signaled (i=%d)", handles[i], i);
+            // libnx wrapper ABI: x0=result, x1=index (wrapper 将 w1 写入 *x0)
             Ret(state, 0);
-            // 写回 index 到 *index_ptr (guest 相对地址)
-            if (g_mem && index_ptr != 0) {
-                u64 guest_idx = index_ptr;
-                u64 base = g_mem->BaseAddress();
-                if (index_ptr >= base && index_ptr < base + Memory::ADDR_SPACE_SIZE)
-                    guest_idx = index_ptr - base;
-                g_mem->Write(guest_idx, (u32)i);
-            }
+            state->x[1] = i;
             return;
         }
     }
