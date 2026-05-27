@@ -68,8 +68,9 @@ void EmulatorCore::InitServices() {
     memory_.MapPhysical(0xE1000000, 0x40000, Memory::Permission::RW);
 
     // 预先映射 GPU 地址空间 (0x20000000-0x20FFFFFF, 16MB)
-    // 现在 Memory 构造已预留整个 4GB，此映射不再冲突
-    memory_.MapPhysical(0x20000000, 0x1000000, Memory::Permission::RW);
+    if (Failed(memory_.MapPhysical(0x20000000, 0x1000000, Memory::Permission::RW))) {
+        LOG_WARN("GPU 地址空间 0x20000000 映射失败");
+    }
 
     tracker_.SetMemory(&memory_);
     ServiceNv_SetMemory(&memory_);
