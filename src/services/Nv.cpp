@@ -56,9 +56,10 @@ static u32 g_nvmap_next_id = 1;
 static std::mutex g_nvmap_mutex;
 
 // NvMap carveout 区域 — 独立于 guest 堆的专用内存池
-// 用于 GPU 内存分配。不碰 guest 堆。
-// Switch GPU 地址空间通常起始于 0x20000000 (Tegra X1 GMMU 区域)。
-static constexpr u64 NVMAP_CARVEOUT_BASE = 0x20000000;
+// 用于 GPU 内存分配。不碰 guest 堆，避免 SetHeapSize 清空堆数据的致命问题。
+// 区域选在 0xD0000000-0xDFFFFFFF (256 MB)，介于堆(0x80000000)和帧缓冲(0xE0000000)之间。
+// 注意: 不可用 0x20000000，此地址与 guest 地址空间其他区域冲突。
+static constexpr u64 NVMAP_CARVEOUT_BASE = 0xD0000000;
 static constexpr u64 NVMAP_CARVEOUT_SIZE = 0x10000000;  // 256 MB
 static u64 g_nvmap_carveout_offset = 0;
 
@@ -626,6 +627,15 @@ static NvGpuService g_nvgpu;
 static NvHostCtrlService g_nvhost_ctrl;
 
 void ServiceNv_Init() {
+    // 预先映射 GPU 地址空间起始页 (0x20000000, 64MB)
+    // Switch 的 GPU GMMU 在此范围内分配 GPU 虚拟地址, SDL2/Mesa 预期此范围可用。
+    if (g_nv_memory) {
+        Result r = g_nv_memory->MapPhysical(0x20000000, 0x4000000,
+                                             Memory::Permission::RW);
+        if (Failed(r)) {
+            LOG_WARN("NV: GPU 地址空间映射失败 @ 0x20000000: %d", (int)r);
+        }
+    }
     LOG_INFO("NV 服务就绪 (NvMap 分配 + NvHost 同步点 + NvGpu 提交)");
     (void)g_nvdrv; (void)g_nvmap; (void)g_nvgpu; (void)g_nvhost_ctrl;
 }
