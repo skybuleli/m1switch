@@ -67,12 +67,10 @@ Result Memory::MapPhysical(u64 address, size_t size, Permission perm,
     u64 map_addr = abs_addr & ~(HOST_PAGE - 1);     // 16K 对齐基址
     u64 map_size = ((size + page_off + HOST_PAGE - 1) / HOST_PAGE) * HOST_PAGE;
 
-    // 先释放目标区域（允许重叠）
-    mach_vm_deallocate(mach_task_self(), map_addr, map_size);
-
+    // 用 VM_FLAGS_OVERWRITE 覆盖预留区域（不再需要显式 deallocate）
     kern_return_t kr = mach_vm_map(
         mach_task_self(), &map_addr, map_size, 0,
-        VM_FLAGS_FIXED,
+        VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE,
         MEMORY_OBJECT_NULL, 0, FALSE,
         VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE,
