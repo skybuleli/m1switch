@@ -199,7 +199,12 @@ cmake --build build
 - [x] test_svc_thread: 线程创建/启动/同步通过
 - [x] test_svc_sleep: 系统时钟 + SleepSystem 通过
 - [x] test_svc_output: 调试输出多行文本通过
-- [ ] L1 服务测试: sm_getsrv, fs_romfs, set_sys, hid_npad, vi_init, applet_basic
+- [x] test_sm_getsrv: 21/21 服务发现通过
+- [x] test_set_sys: 固件版本读取通过
+- [x] test_hid_npad: HID 服务可用性通过
+- [x] test_vi_init: VI 服务可用性通过
+- [ ] test_fs_romfs: 需要 RomFS 支持
+- [ ] test_applet_basic: applet 事件循环待修复
 - [ ] switch-examples 自动编译 & 全量回归
 - [ ] CI 集成 devkitPro 编译步骤
 

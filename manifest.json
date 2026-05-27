@@ -158,6 +158,35 @@
       "command": "./build/m1switch_headless tests/e2e/build/test_svc_thread.nro --timeout=10",
       "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
     },
+    "t3.6.1": {
+      "name": "L1 sm_getsrv",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_sm_getsrv.nro --timeout=10",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
+    "t3.6.2": {
+      "name": "L1 set_sys",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_set_sys.nro --timeout=10",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
+    "t3.6.3": {
+      "name": "L1 hid_npad",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_hid_npad.nro --timeout=10",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
+    "t3.6.4": {
+      "name": "L1 vi_init",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_vi_init.nro --timeout=10",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
+      "name": "L0 svc_thread",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_svc_thread.nro --timeout=10",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
     "b.svc.dispatch": {
       "name": "SVC dispatch roundtrip",
       "command": "./build/m1switch_headless test-roms/bench_svc.nro --timeout=10",
