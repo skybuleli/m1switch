@@ -363,10 +363,11 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         if (Failed(r)) LOG_WARN("Protect .text RX failed: %d", (int)r);
         else LOG_INFO("Protected .text as RX (%llu bytes)", text_page_sz);
     }
-    // .rodata → R: 只保护 .text 映射末尾之后的区域（避免覆盖 .text 尾部为非执行）
+    // .rodata → R: 只保护 .text 映射末尾之后、.data 之前的区域
     if (rodata_size > 0) {
         u64 rodata_r_start = text_addr + text_page_sz;  // text 映射结束处
-        u64 rodata_r_end   = rodata_addr + rodata_page_sz;
+        // rodata 保护不能覆盖 .data 段（.data 必须是 RW）
+        u64 rodata_r_end   = (data_size > 0) ? data_addr : (rodata_addr + rodata_page_sz);
         if (rodata_r_start < rodata_r_end) {
             Result r = memory_.Protect(rodata_r_start, rodata_r_end - rodata_r_start,
                                        Memory::Permission::R);
