@@ -83,10 +83,12 @@ void EmulatorCore::InitServices() {
     extern void ServiceSet_Init();
     extern void ServiceApm_Init();
     extern void ServiceTime_Init();
+    extern void ServiceNv_Init();
     extern void ServiceAudioOut_Init();
     extern void ServicePcv_Init();
 
     ServiceSm_Init();
+    ServiceNv_Init();
     ServiceSpl_Init();
     ServiceAccount_Init();
     ServiceAm_Init();
