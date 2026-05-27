@@ -430,6 +430,12 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         }
     }
 
+    // ICommonStateGetter::GetEventHandle: 返回值是 KEvent 句柄，通过 copy handle 传递
+    if ((sname == "appletOE" || sname == "appletAE") && cmd_id == 0) {
+        // GetAppletProxy 需要 move handle 空间（domain 下用 object_id 替代）
+        // 已由 needs_move_handle 处理
+    }
+
     // 预分配 move/copy handle 空间: 服务将 handle 写入 raw_out[0..3] 后，
     // Ipc 层会将其提取到此处的 handle_pos。
     // 仅对普通请求(type=4)有效，控制命令(type=5 如 ConvertCurrentObjectToDomain)
@@ -554,30 +560,34 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         u32 move_handle = 0;
         std::memcpy(&move_handle, raw_out, sizeof(move_handle));
         if (move_handle != 0) {
-            if (is_domain) {
-                // 域模式：不提取 move handle，分配递增的对象 ID
+            // 跳过伪句柄和非服务句柄（如 KEvent 的 0xdxxx 内核句柄）
+            if (move_handle >= 0xE0000000) {
+                LOG_DEBUG("IPC: skip pseudo-handle 0x%x", move_handle);
+                raw_out_max = 0;
+            } else if (is_domain) {
+                // 域模式：只将真实服务 session 注册为 domain object
                 auto* ds = find_session();
-                u32 obj_id = ds ? ds->next_object_id++ : 1;
-                // 查找子服务（move_handle 是 CreateSession 返回的 session ID）
                 ServiceBase* obj_svc = IpcManager::Instance().GetServiceBySession(move_handle);
                 if (obj_svc && ds) {
+                    u32 obj_id = ds->next_object_id++;
                     ds->domain_objects[obj_id] = obj_svc;
                     LOG_DEBUG("IPC: domain object 0x%x (svc=%p) cmd=%u sid=0x%x",
                               obj_id, (void*)obj_svc, cmd_id, session_handle);
+                    if (domain_out_count < 8) {
+                        domain_out_objects[domain_out_count++] = obj_id;
+                    }
+                    raw_out_max = 0; // 已提取为 domain object
                 } else {
-                    LOG_WARN("IPC: domain object 0x%x: no service found for session 0x%x",
-                             obj_id, move_handle);
-                }
-                if (domain_out_count < 8) {
-                    domain_out_objects[domain_out_count++] = obj_id;
+                    LOG_DEBUG("IPC: non-service handle 0x%x, keeping in response data", move_handle);
+                    // raw_out_max stays as-is, handle 留在 CMIF data 中返回给 libnx
                 }
             } else {
                 // 非域模式：提取为 move handle
                 LOG_DEBUG("IPC: move handle 0x%x for '%s' cmd=%u",
                           move_handle, svc_name_cstr, cmd_id);
                 std::memcpy(handle_pos, &move_handle, sizeof(move_handle));
+                raw_out_max = 0;
             }
-            raw_out_max = 0; // handle 已提取到头部，清除数据
         }
     }
 

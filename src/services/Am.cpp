@@ -1,5 +1,6 @@
 #include "services/Ipc.h"
 #include "common/Log.h"
+#include "kernel/Kernel.h"
 #include <cstring>
 
 // ── AM (Applet Manager) Service ─────────────────────────────
@@ -97,23 +98,32 @@ public:
     bool HandleCommand(u32 cmd_id, const u8* in, size_t in_sz,
                        u8* out, size_t* out_sz) override {
         switch (cmd_id) {
-        case 0: // GetEventHandle
+        case 0: // GetEventHandle — 返回 KEvent 句柄（已 signal）
             LOG_DEBUG("ICommonStateGetter: GetEventHandle");
-            // 返回 fake 事件句柄 0xE0000001，svcWaitSynchronization 会立即返回
-            if (*out_sz >= 4) {
-                u32 fake_ev = 0xE0000001;
-                std::memcpy(out, &fake_ev, 4);
-                *out_sz = 4;
+            {
+                auto* ev = new KEvent();
+                ev->Signal(); // 立即 signal，让 appletMainLoop 能立即检查消息
+                u32 ev_handle = KernelHandleTable().Create(ev);
+                if (*out_sz >= 4) {
+                    std::memcpy(out, &ev_handle, 4);
+                    *out_sz = 4;
+                }
+                LOG_DEBUG("ICommonStateGetter: GetEventHandle → handle=0x%x (signaled)", ev_handle);
             }
             return true;
 
-        case 1: // ReceiveMessage
+        case 1: // ReceiveMessage — 返回 AppletMessage
             LOG_DEBUG("ICommonStateGetter: ReceiveMessage");
-            // Return FocusStateChanged = 0xF
-            if (*out_sz >= 4) {
-                u32 msg = 0xF; // FocusStateChanged
-                std::memcpy(out, &msg, 4);
-                *out_sz = 4;
+            // 立即返回 ExitRequest(4)，让 libnx 的 appletMainLoop 退出
+            // 从而允许用户代码执行到 main()
+            {
+                u32 msg = 4; // AppletMessage_ExitRequest
+                if (*out_sz >= 4) {
+                    std::memcpy(out, &msg, 4);
+                    *out_sz = 4;
+                }
+                LOG_DEBUG("ICommonStateGetter: ReceiveMessage → 0x%x (%s)",
+                          msg, msg == 4 ? "ExitRequest" : "FocusStateChanged");
             }
             return true;
 

@@ -9,13 +9,14 @@
 static u64 GetLangCodeEnUs() { return 0x00000053552D6E65ULL; } // "en-US"
 
 // set:sys GetFirmwareVersion 响应结构
+// 注意: 合计不能超过 TLS IPC 缓冲 (256B) - CMIF 头开销
 struct NX_FirmwareVersion {
     u8 major, minor, micro, pad1;
     u8 rev_major, rev_minor, pad2, pad3;
-    char platform[0x20];
-    char version_hash[0x40];
+    char platform[0x10];
+    char version_hash[0x10];
     char display_version[0x18];
-    char display_title[0x80];
+    char display_title[0x40];
 };
 
 class SetService : public ServiceBase {
