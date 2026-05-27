@@ -247,11 +247,20 @@ static size_t CalcCmifAlign(size_t dw_off) {
 u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
                                u8* response, size_t* resp_size) {
     // ── 查找 session ────────────────────────────────────
-    Session* session = nullptr;
-    for (auto& s : sessions_) {
-        if (s.id == session_handle) { session = &s; break; }
+    // 注意: 不能缓存 Session* 指针，因为后续 CreateSession 可能使 vector realloc 失效
+    auto find_session = [&]() -> Session* {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto& s : sessions_) if (s.id == session_handle) return &s;
+        return nullptr;
+    };
+    auto get_is_domain = [&]() -> bool {
+        auto* s = find_session();
+        return s && s->is_domain;
+    };
+    {
+        auto* s = find_session();
+        if (!s) { LOG_WARN("IPC: invalid session 0x%x", session_handle); return 0xFFFF; }
     }
-    if (!session) { LOG_WARN("IPC: invalid session 0x%x", session_handle); return 0xFFFF; }
     if (size < sizeof(HipcHeader)) { LOG_WARN("IPC: msg too small %zu", size); return 0xFFFF; }
 
     // ── 解析 hipc 请求 ───────────────────────────────────
@@ -282,7 +291,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     }
 
     // ── 处理 Close 命令（type=2）─ 关闭 session 释放内存 ────
-    if (req_hdr.type == 2 && session) {
+    if (req_hdr.type == 2) {
         LOG_DEBUG("IPC: Close session 0x%x", session_handle);
         CloseSession(session_handle);
         // 返回空 HipcHeader 表示确认
@@ -308,14 +317,15 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
 
     // 域模式: 解析 CmifDomainInHeader 获取 object_id（用于后续路由到子服务）
     u32 domain_object_id = 0;
-    if (session && session->is_domain && req_hdr.num_data_words > 0) {
+    bool cur_is_domain = get_is_domain();
+    if (cur_is_domain && req_hdr.num_data_words > 0) {
         CmifDomainInHeader domain_hdr = {};
         std::memcpy(&domain_hdr, data + cmif_off, sizeof(domain_hdr));
         domain_object_id = domain_hdr.object_id;
     }
 
     // 域模式: 在 CmifDomainInHeader 之后跳过 16 字节到达 CmifInHeader
-    size_t domain_skip = session->is_domain ? sizeof(CmifDomainInHeader) : 0;
+    size_t domain_skip = cur_is_domain ? sizeof(CmifDomainInHeader) : 0;
     if (req_hdr.num_data_words > 0) {
         // 尝试解析 CmifInHeader（域模式时在 CmifDomainInHeader 之后16字节）
         CmifInHeader cmif_in = {};
@@ -371,8 +381,9 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     u32 domain_out_objects[8] = {};
     u32 domain_out_count = 0;
 
-    // 保存服务名（session 指针可能在 CreateSession 后被失效）
-    std::string svc_name = session->service_name;
+    // 获取服务名（重新查找 session）
+    std::string svc_name;
+    { auto* s = find_session(); if (s) svc_name = s->service_name; }
     const char* svc_name_cstr = svc_name.c_str();
 
     // 标记需要从服务输出中提取 move/copy handle 的情形
@@ -390,16 +401,19 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         // cmd 0: _hidCreateAppletResource → 返回子会话 (move handle)
         // cmd 1: GetSharedMemory → 返回共享内存handle
         needs_move_handle = true;
-    } else if (cmd_id <= 1000 && session && session->service &&
-               strcmp(session->service->Name(), "appletProxy") == 0) {
-        // applet 代理会话的所有子对象命令都返回 move handle
-        needs_move_handle = true;
-    } else if (session && session->service &&
-               strcmp(session->service->Name(), "HidAppletResource") == 0) {
-        // HID 子会话 cmd=0 (GetSharedMemoryHandle): 返回 KSharedMemory copy handle。
-        // 使用 copy handle 而非 move handle（libnx 从 ipcOut->Handles[0] 读取）
-        needs_move_handle = true;
-        needs_copy_handle = true;
+    } else if (cmd_id <= 1000) {
+        auto* s = find_session();
+        if (s && s->service) {
+            if (strcmp(s->service->Name(), "appletProxy") == 0) {
+                // applet 代理会话的所有子对象命令都返回 move handle
+                needs_move_handle = true;
+            }
+            if (strcmp(s->service->Name(), "HidAppletResource") == 0) {
+                // HID 子会话 cmd=0 (GetSharedMemoryHandle): 返回 KSharedMemory copy handle。
+                needs_move_handle = true;
+                needs_copy_handle = true;
+            }
+        }
     }
 
     // SM::Initialize (cmd=0): 返回会话本身的句柄作为 copy handle
@@ -422,7 +436,9 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // 不应提取 move handle，否则 domain_id 会被误提取为句柄。
     bool is_control = (req_hdr.type == 5);
     // 域模式 session 不使用 move handle，使用 domain out object ID 代替
-    if (needs_move_handle && !is_control && !session->is_domain && resp_remaining >= 4 + 4) {
+    // 注意: 必须在此处实时判断 is_domain（指针可能悬空）
+    bool handle_is_domain = get_is_domain();
+    if (needs_move_handle && !is_control && !handle_is_domain && resp_remaining >= 4 + 4) {
         shdr_pos = resp_ptr;
         handle_pos = resp_ptr + 4;
         if (needs_copy_handle) {
@@ -441,15 +457,18 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
 
     *resp_size = (size_t)(raw_out - response);
 
-    if (!session->service) {
-        LOG_TRACE("IPC: session 0x%x ('%s') no handler", session_handle, session->service_name.c_str());
-        return 0;
+    {
+        auto* s = find_session();
+        if (!s || !s->service) {
+            LOG_TRACE("IPC: session 0x%x no handler", session_handle);
+            return 0;
+        }
     }
 
     // ── IPC 追踪：请求 ────────────────────────────────────
     TRACE_IPC(cmd_id, (u64)session_handle, raw_in_size > 0 ? *((const u64*)raw_in) : 0, 0);
 
-    // HID 诊断: 打印所有 HID 请求的完整 64 字节 hex
+    // HID 诊断
     if (sname.find("hid") != std::string::npos) {
         char hex[128] = {};
         int n = 0;
@@ -467,14 +486,20 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     if (is_control) {
         if (cmd_id == 0) {
             // ConvertCurrentObjectToDomain — 返回 domain_id 让 libnx 进入 domain 模式
-            // appletInitialize 依赖此成功，否则整个初始化失败
             LOG_DEBUG("IPC: ConvertCurrentObjectToDomain → domain_id=1 for session 0x%x", session_handle);
             if (raw_out_max >= 4) {
                 u32 domain_id = 1;
                 std::memcpy(raw_out, &domain_id, sizeof(domain_id));
                 raw_out_max = 4;
             }
-            session->is_domain = true; // 记住 domain 状态供后续请求使用
+            {
+                auto* s = find_session();
+                if (s) {
+                    LOG_INFO("IPC: setting is_domain=true on session 0x%x (svc=%s)", 
+                              session_handle, s->service ? s->service->Name() : "?");
+                    s->is_domain = true;
+                }
+            }
             LOG_DEBUG("IPC: session 0x%x now in domain mode", session_handle);
             handled = true;
         } else if (cmd_id == 3) {
@@ -495,20 +520,23 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     } else {
         // ── 普通 Request 命令 → 转发给服务 ─────────────────
         // 域模式: 按 object_id 路由到已注册的子服务
-        ServiceBase* target_service = session ? session->service : nullptr;
-        if (session && session->is_domain && domain_object_id > 0) {
-            auto it = session->domain_objects.find(domain_object_id);
-            if (it != session->domain_objects.end()) {
-                target_service = it->second;
-            } else if (session->service != nullptr) {
-                // fallback: 用父服务（兼容未注册 object 的请求）
-                LOG_TRACE("IPC: domain object 0x%x not registered, fallback to parent", domain_object_id);
+        ServiceBase* target_service = nullptr;
+        {
+            auto* s = find_session();
+            if (s) {
+                target_service = s->service;
+                if (s->is_domain && domain_object_id > 0) {
+                    auto it = s->domain_objects.find(domain_object_id);
+                    if (it != s->domain_objects.end()) {
+                        target_service = it->second;
+                    }
+                }
             }
         }
         if (target_service) {
             handled = target_service->HandleCommand(cmd_id, raw_in, raw_in_size, raw_out, &raw_out_max);
         } else {
-            LOG_WARN("IPC: no service handler for session 0x%x ('%s')", session_handle, session->service_name.c_str());
+            LOG_WARN("IPC: no service handler for session 0x%x ('%s')", session_handle, svc_name_cstr);
             raw_out_max = 0;
             handled = true;
         }
@@ -521,19 +549,21 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
     // 控制命令(type=5)不提取，防止 domain_id 被误提取为句柄
     // 域模式不需要 handle_pos（域分支使用 domain_object_id 而非句柄），
     // 非域模式仍需 handle_pos 来写入 move/copy handle 到响应头部。
-    if (handled && !is_control && raw_out_max >= 4 && (handle_pos || (session && session->is_domain))) {
+    bool is_domain = get_is_domain();
+    if (handled && !is_control && raw_out_max >= 4 && (handle_pos || is_domain)) {
         u32 move_handle = 0;
         std::memcpy(&move_handle, raw_out, sizeof(move_handle));
         if (move_handle != 0) {
-            if (session && session->is_domain) {
+            if (is_domain) {
                 // 域模式：不提取 move handle，分配递增的对象 ID
-                u32 obj_id = session->next_object_id++;
+                auto* ds = find_session();
+                u32 obj_id = ds ? ds->next_object_id++ : 1;
                 // 查找子服务（move_handle 是 CreateSession 返回的 session ID）
                 ServiceBase* obj_svc = IpcManager::Instance().GetServiceBySession(move_handle);
-                if (obj_svc) {
-                    session->domain_objects[obj_id] = obj_svc;
-                    LOG_DEBUG("IPC: domain object 0x%x (svc=%p) for '%s' cmd=%u",
-                              obj_id, (void*)obj_svc, svc_name_cstr, cmd_id);
+                if (obj_svc && ds) {
+                    ds->domain_objects[obj_id] = obj_svc;
+                    LOG_DEBUG("IPC: domain object 0x%x (svc=%p) cmd=%u sid=0x%x",
+                              obj_id, (void*)obj_svc, cmd_id, session_handle);
                 } else {
                     LOG_WARN("IPC: domain object 0x%x: no service found for session 0x%x",
                              obj_id, move_handle);
@@ -577,18 +607,15 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
             raw_out_max = 0;
         }
 
-        // ── 构建 CMIF 响应 ──────────────────────────────
-        // libnx 的 cmifParseResponse 始终用 cmifGetAlignedDataStart 定位
-        // CmifOutHeader，即 16 字节对齐于 data_words 起始处。控制命令(type=5)
-        // 的响应也不例外。所以必须始终对齐，不区分控制/请求命令。
-        // 域模式(session->is_domain)的响应在 CmifOutHeader 前有 CmifDomainOutHeader
-        // (16 字节 + num_out_objects*sizeof(u32) 的对象 ID 在数据末尾)。
+        // ── 构建 IPC 响应 ──────────────────────────────
+        // CMIF 格式: 所有响应（含控制命令）都包含 CmifOutHeader。
+        // 域模式额外加上 CmifDomainOutHeader 和尾部对象 ID。
         size_t raw_off = (size_t)(raw_out - response);
         size_t cmif_out_off = CalcCmifAlign(raw_off);
         
         // 域模式的额外头部: 仅对普通请求(type=4)的响应包含 CmifDomainOutHeader。
         // 控制命令(type=5)使用非域格式响应，即使 session 已转换为域模式。
-        bool is_domain_resp = session && session->is_domain && !is_control;
+        bool is_domain_resp = get_is_domain() && !is_control;
         size_t domain_hdr_sz = is_domain_resp ? sizeof(CmifDomainOutHeader) : 0;
         
         // CmifOutHeader 在 cmif_out_off + domain_hdr_sz 处
@@ -607,13 +634,11 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
             domain_hdr.num_out_objects = domain_out_count;
             std::memcpy(response + cmif_out_off, &domain_hdr, sizeof(domain_hdr));
 
-            // 在服务数据之后写入输出对象 ID（libnx 在 cmifParseResponse 的
-            // objects 指针处读取它们）
+            // 在服务数据之后写入输出对象 ID
             u8* obj_pos = response + cmif_out_end + raw_out_max;
             for (u32 i = 0; i < domain_out_count; i++) {
                 std::memcpy(obj_pos + i * 4, &domain_out_objects[i], 4);
             }
-            // 更新 total_data_end 包含对象 ID
             total_data_end += domain_out_count * sizeof(u32);
         }
         
@@ -641,7 +666,7 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
         
         *resp_size = total_size;
     } else {
-        LOG_WARN("IPC: unhandled cmd %u for '%s'", cmd_id, session->service_name.c_str());
+        LOG_WARN("IPC: unhandled cmd %u for '%s'", cmd_id, svc_name_cstr);
     }
 
     // 写入 HipcHeader

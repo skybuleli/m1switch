@@ -1,0 +1,17 @@
+TARGET	:=	test_libnx_init
+PREFIX	:=	aarch64-none-elf-
+CC	:=	/opt/devkitpro/devkitA64/bin/$(PREFIX)gcc
+ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
+CFLAGS	:=	-g -O2 -ffunction-sections $(ARCH) -I/opt/devkitpro/libnx/include -D__SWITCH__
+LDFLAGS	:=	-specs=/opt/devkitpro/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(TARGET).map -L/opt/devkitpro/libnx/lib -lnx
+
+all: $(TARGET).nro
+
+$(TARGET).nro: $(TARGET).elf
+	/opt/devkitpro/tools/bin/elf2nro $< $@
+
+$(TARGET).elf: libnx_test.c
+	$(CC) $(CFLAGS) $(LDFLAGS) libnx_test.c -o $@
+
+clean:
+	rm -f $(TARGET).nro $(TARGET).elf $(TARGET).map
