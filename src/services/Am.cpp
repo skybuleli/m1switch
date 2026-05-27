@@ -98,17 +98,12 @@ public:
     bool HandleCommand(u32 cmd_id, const u8* in, size_t in_sz,
                        u8* out, size_t* out_sz) override {
         switch (cmd_id) {
-        case 0: // GetEventHandle — 返回 KEvent 句柄（已 signal）
-            LOG_DEBUG("ICommonStateGetter: GetEventHandle");
-            {
-                auto* ev = new KEvent();
-                ev->Signal(); // 立即 signal，让 appletMainLoop 能立即检查消息
-                u32 ev_handle = KernelHandleTable().Create(ev);
-                if (*out_sz >= 4) {
-                    std::memcpy(out, &ev_handle, 4);
-                    *out_sz = 4;
-                }
-                LOG_DEBUG("ICommonStateGetter: GetEventHandle → handle=0x%x (signaled)", ev_handle);
+        case 0: // GetEventHandle — 返回 0（appletMainLoop 会 WaitSync handle=0）
+            LOG_DEBUG("ICommonStateGetter: GetEventHandle → returning 0 (auto-signal)");
+            if (*out_sz >= 4) {
+                u32 zero = 0;
+                std::memcpy(out, &zero, 4);
+                *out_sz = 4;
             }
             return true;
 

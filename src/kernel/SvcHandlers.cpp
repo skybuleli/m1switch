@@ -376,19 +376,34 @@ SVC(SvcWaitSynchronization) {
         return;
     }
 
+    // handles_ptr 是 host 绝对地址，需转换为 guest 相对地址
+    u64 mem_base = g_mem->BaseAddress();
+    u64 guest_handles_ptr = handles_ptr;
+    if (handles_ptr >= mem_base && handles_ptr < mem_base + Memory::ADDR_SPACE_SIZE)
+        guest_handles_ptr = handles_ptr - mem_base;
+    LOG_INFO("WaitSync: host_handles=0x%llx guest_handles=0x%llx base=0x%llx",
+             handles_ptr, guest_handles_ptr, mem_base);
+
     std::vector<u32> handles(num_handles);
     for (u32 i = 0; i < num_handles; i++) {
-        u32 h;
-        g_mem->Read(handles_ptr + i * 4, &h);
+        u32 h = 0;
+        g_mem->Read(guest_handles_ptr + i * 4, &h);
         handles[i] = h;
     }
 
     // 检查 fake 事件句柄（applet 自动信号）
     for (u32 i = 0; i < num_handles; i++) {
-        if (handles[i] == 0xE0000001) {
-            LOG_DEBUG("WaitSynchronization: fake event 0xE0000001 signaled");
+        if (handles[i] == 0xE0000001 || handles[i] == 0) {
+            LOG_INFO("WaitSynchronization: handle 0x%x auto-signaled (i=%d)", handles[i], i);
             Ret(state, 0);
-            state->x[1] = i;
+            // 写回 index 到 *index_ptr (guest 相对地址)
+            if (g_mem && index_ptr != 0) {
+                u64 guest_idx = index_ptr;
+                u64 base = g_mem->BaseAddress();
+                if (index_ptr >= base && index_ptr < base + Memory::ADDR_SPACE_SIZE)
+                    guest_idx = index_ptr - base;
+                g_mem->Write(guest_idx, (u32)i);
+            }
             return;
         }
     }
