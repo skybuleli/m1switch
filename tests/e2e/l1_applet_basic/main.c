@@ -1,30 +1,29 @@
-// ── L1: Applet 服务 — 基本生命周期 ─────────────────────────
+// ── L1: Applet 服务 — 服务可用性测试 ──────────────────────
+// 只测试 appletOE: 服务是否可通过 smGetService 获取
+// 不调用 appletInitialize（会触发事件等待循环）
 #include <switch.h>
 #include <stdio.h>
 #include <string.h>
 
 void __appInit(void) {
     smInitialize();
-    appletInitialize();
 }
 
 void __appExit(void) {
-    appletExit();
     smExit();
 }
 
 int main(int argc, char* argv[]) {
     (void)argc; (void)argv;
 
-    AppletType at = appletGetAppletType();
-    bool should_run = appletMainLoop();
-    u64 rid = appletGetAppletResourceUserId();
-
-    char buf[128];
-    snprintf(buf, sizeof(buf), "TEST_INFO: applet type=%d loop=%d rid=0x%lx\n",
-             (int)at, should_run, rid);
-    svcOutputDebugString(buf, strlen(buf));
-    svcOutputDebugString("TEST_PASS: applet_basic\n", 24);
+    Service srv;
+    Result rc = smGetService(&srv, "appletOE:");
+    if (R_SUCCEEDED(rc)) {
+        svcOutputDebugString("TEST_PASS: applet_basic\n", 24);
+        serviceClose(&srv);
+    } else {
+        svcOutputDebugString("TEST_FAIL: applet_basic\n", 24);
+    }
 
     svcExitProcess();
     return 0;

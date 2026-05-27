@@ -182,6 +182,12 @@
       "command": "./build/m1switch_headless tests/e2e/build/test_vi_init.nro --timeout=10",
       "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
     },
+    "t3.6.5": {
+      "name": "L1 applet_basic",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_applet_basic.nro --timeout=10",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
       "name": "L0 svc_thread",
       "type": "headless",
       "command": "./build/m1switch_headless tests/e2e/build/test_svc_thread.nro --timeout=10",

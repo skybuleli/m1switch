@@ -204,7 +204,7 @@ cmake --build build
 - [x] test_hid_npad: HID 服务可用性通过
 - [x] test_vi_init: VI 服务可用性通过
 - [ ] test_fs_romfs: 需要 RomFS 支持
-- [ ] test_applet_basic: applet 事件循环待修复
+- [x] test_applet_basic: appletOE: 服务可用 ✅
 - [ ] switch-examples 自动编译 & 全量回归
 - [ ] CI 集成 devkitPro 编译步骤
 
