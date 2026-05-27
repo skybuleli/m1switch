@@ -56,9 +56,9 @@ static u32 g_nvmap_next_id = 1;
 static std::mutex g_nvmap_mutex;
 
 // NvMap carveout 区域 — 独立于 guest 堆的专用内存池
-// 用于 GPU 内存分配。不碰 guest 堆，避免 SetHeapSize 清空堆数据的致命问题。
-// 区域选在 0xD0000000-0xDFFFFFFF (256 MB)，介于堆(0x80000000)和帧缓冲(0xE0000000)之间。
-static constexpr u64 NVMAP_CARVEOUT_BASE = 0xD0000000;
+// 用于 GPU 内存分配。不碰 guest 堆。
+// Switch GPU 地址空间通常起始于 0x20000000 (Tegra X1 GMMU 区域)。
+static constexpr u64 NVMAP_CARVEOUT_BASE = 0x20000000;
 static constexpr u64 NVMAP_CARVEOUT_SIZE = 0x10000000;  // 256 MB
 static u64 g_nvmap_carveout_offset = 0;
 
