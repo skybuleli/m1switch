@@ -53,11 +53,10 @@ Result Memory::MapPhysical(u64 address, size_t size, Permission perm,
     u64 map_addr = abs_addr & ~(HOST_PAGE - 1);     // 16K 对齐基址
     u64 map_size = ((size + page_off + HOST_PAGE - 1) / HOST_PAGE) * HOST_PAGE;
 
-    // 使用 VM_FLAGS_OVERWRITE 覆盖已有映射 + VM_FLAGS_JIT 确保可执行权限
-    // （macOS 26+ 对非 JIT 映射的可执行权限限制更严格）
+    // 使用 VM_FLAGS_OVERWRITE 覆盖已有映射（不添加 JIT 标志，防止权限错误）
     kern_return_t kr = mach_vm_map(
         mach_task_self(), &map_addr, map_size, 0,
-        VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE | 0x0800,  // 0x0800 = VM_FLAGS_JIT
+        VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE,
         MEMORY_OBJECT_NULL, 0, FALSE,
         VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE,
