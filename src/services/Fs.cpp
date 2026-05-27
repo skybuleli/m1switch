@@ -203,8 +203,13 @@ private:
 
     bool HandleOpenRomFS(const u8* in, size_t in_sz, u8* out, size_t* out_sz) {
         if (!g_romfs_loaded) {
-            LOG_WARN("FS: OpenRomFS 但没有 RomFS 数据");
-            *out_sz = 0;
+            // 无 RomFS 时提供一个空的只读文件句柄，防止 guest 使用空响应中的垃圾值
+            LOG_WARN("FS: OpenRomFS 无数据, 创建空的 RomFS 句柄");
+            g_romfs_raw_data = std::vector<u8>(1, 0);  // 1 字节空数据
+            g_romfs_loaded = true;
+            u32 fd = g_file_table.Open("romfs://", g_romfs_raw_data, false);
+            LOG_INFO("FS: OpenRomFS (fake) → fd=0x%x", fd);
+            WriteHandle(out, fd, out_sz);
             return true;
         }
         u32 fd = g_file_table.Open("romfs://", g_romfs_raw_data, false);
