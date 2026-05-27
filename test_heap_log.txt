@@ -1,0 +1,127 @@
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'acc:u0' registered @ 0x104491498
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'acc:u1' registered @ 0x104491498
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'acc:su' registered @ 0x104491498
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'appletOE:' registered @ 0x1044914a0
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'appletAE:' registered @ 0x1044914a0
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'applet' registered @ 0x104491500
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'ns:' registered @ 0x104491508
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'ns:dev' registered @ 0x104491508
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'ns:am2' registered @ 0x104491508
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'ldr:' registered @ 0x104491510
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'ldr:pm' registered @ 0x104491510
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'audout:' registered @ 0x104491518
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'audren:' registered @ 0x104491518
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'fsp-srv:' registered @ 0x1044915c8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'fs:' registered @ 0x1044915c8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'hid:' registered @ 0x1044915d8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'hidbus:' registered @ 0x1044915d8
+10:17:26.672 [INFO ] [0x103] Hid.cpp:118:HidService HID: shared memory handle=0xd001 (phys=0xe1000000 size=0x40000)
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'nvdrv:' registered @ 0x1044916d8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'nvmap:' registered @ 0x1044916e0
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'nvdrv#' registered @ 0x1044916e8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'nvhost-ctrl:' registered @ 0x104491708
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'pcv:' registered @ 0x104491780
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'psc:' registered @ 0x104491788
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'pm:' registered @ 0x104491790
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'pm:bm' registered @ 0x104491790
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'nifm:' registered @ 0x104491798
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'nifm:oa' registered @ 0x104491798
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'ro:' registered @ 0x1044917a0
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'erpt:' registered @ 0x1044917a8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'erpt:s' registered @ 0x1044917a8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'erpt:c' registered @ 0x1044917a8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'fatal:' registered @ 0x1044917b0
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'fatal:p' registered @ 0x1044917b0
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'btm:' registered @ 0x1044917b8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'btm:sys' registered @ 0x1044917b8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'nfc:' registered @ 0x1044917c0
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'nfc:mf' registered @ 0x1044917c0
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'nfc:user' registered @ 0x1044917c0
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'set:' registered @ 0x1044917c8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'set:sys' registered @ 0x1044917d8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'time:' registered @ 0x1044917f8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'time:a' registered @ 0x1044917f8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'time:u' registered @ 0x1044917f8
+10:17:26.672 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'sm:' registered @ 0x104491800
+10:17:26.673 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'sm:m:' registered @ 0x104491800
+10:17:26.673 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'spl:' registered @ 0x104491808
+10:17:26.673 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'spl:mig' registered @ 0x104491808
+10:17:26.673 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'spl:fs' registered @ 0x104491808
+10:17:26.673 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'vi:' registered @ 0x104491818
+10:17:26.673 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'vi:m' registered @ 0x104491818
+10:17:26.673 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'vi:u' registered @ 0x104491818
+10:17:26.673 [INFO ] [0x103] Log.cpp:17:Init Logger initialized (level=1)
+10:17:26.673 [INFO ] [0x103] headless_main.cpp:93:main === Headless Runner ===
+10:17:26.673 [INFO ] [0x103] headless_main.cpp:94:main NRO: tests/e2e/l0_svc_heap/build/test_svc_heap.nro
+10:17:26.673 [INFO ] [0x103] headless_main.cpp:95:main Timeout: 8s
+10:17:26.673 [INFO ] [0x103] Memory.cpp:29:Memory Guest memory base: 0x300000000 (4 GiB virtual address space)
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:150:LoadFromBuffer NRO: magic=0x304f524e size=12288
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:151:LoadFromBuffer   .text:   offset=0 size=4096
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:152:LoadFromBuffer   .rodata: offset=4096 size=4096
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:153:LoadFromBuffer   .data:   offset=8192 size=4096
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:154:LoadFromBuffer   .bss:   size=0
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:164:LoadFromBuffer MOD0 @ 0x0
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:242:LoadFromBuffer NRO: PIE format detected, shifting data from 0x40002000 to 0x40004000 (+0x2000)
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:327:LoadFromBuffer   ADRP: patched 0 instructions referencing data page range 0x2000-0x7000
+10:17:26.673 [INFO ] [0x103] NativeExec.cpp:43:EnsureFixedTls Fixed TLS at 0x200000000 (8 KB)
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:423:LoadFromBuffer Patched 3 SVCs
+10:17:26.673 [WARN ] [0x103] NroLoader.cpp:485:LoadFromBuffer libnx crt0 relocation call not found at +0xD8 (inst=0x6165685f)
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:564:LoadFromBuffer Protected .text as RX (16384 bytes)
+10:17:26.673 [INFO ] [0x103] NroLoader.cpp:601:LoadFromBuffer Entry: 0x40000000 (libnx image base)
+10:17:26.673 [INFO ] [0x103] headless_main.cpp:120:main Entry: 0x40000000, 3 seg(s)
+10:17:26.673 [INFO ] [0x103] headless_main.cpp:131:main MEM_VERIFY: .text[0] = 0xd2a00200
+10:17:26.673 [INFO ] [0x103] headless_main.cpp:140:main MEM_VERIFY: .text end[0x40000fff] = 0x00
+10:17:26.673 [INFO ] [0x103] headless_main.cpp:150:main MEM_VERIFY: .rodata[0x40001000] = 00000000...
+10:17:26.674 [INFO ] [0x103] headless_main.cpp:157:main Stack: top=0xc0000000 size=0x100000
+10:17:26.674 [INFO ] [0x103] headless_main.cpp:165:main Heap: base=0x80000000 size=0x4000000 result=0
+10:17:26.679 [INFO ] [0x103] headless_main.cpp:173:main Heap: 67108864 bytes pre-touched
+10:17:26.679 [INFO ] [0x103] SvcHandlers.cpp:1100:SvcHandlers_RegisterAll Registered 80 SVC handlers
+10:17:26.679 [INFO ] [0x103] SvcTable.cpp:19:SvcTable_Init SVC table initialized (256 entries)
+10:17:26.679 [INFO ] [0x103] headless_main.cpp:192:main Initializing system services...
+10:17:26.679 [INFO ] [0x103] Sm.cpp:171:ServiceSm_Init SM service ready
+10:17:26.679 [INFO ] [0x103] Spl.cpp:82:ServiceSpl_Init SPL service ready
+10:17:26.679 [INFO ] [0x103] Account.cpp:73:ServiceAccount_Init Account service ready
+10:17:26.679 [INFO ] [0x103] Am.cpp:567:ServiceAm_Init AM service ready
+10:17:26.679 [INFO ] [0x103] Am.cpp:568:ServiceNs_Init NS service ready
+10:17:26.679 [INFO ] [0x103] Am.cpp:569:ServiceLdr_Init LDR service ready
+10:17:26.679 [INFO ] [0x103] Fs.cpp:411:ServiceFs_Init FS 服务就绪
+10:17:26.679 [INFO ] [0x103] Hid.cpp:370:ServiceHid_Init HID: 共享内存映射完成 @ 0xe1000000 (256 KB)
+10:17:26.679 [INFO ] [0x103] Hid.cpp:372:ServiceHid_Init HID 服务就绪 (Npad 共享内存布局)
+10:17:26.681 [INFO ] [0x103] Vi.cpp:459:ServiceVi_Init VI: 帧缓冲映射完成 @ 0xe0000000 / 0xe0800000 (2x 8192 KB)
+10:17:26.681 [INFO ] [0x103] Vi.cpp:472:ServiceVi_Init VI 服务就绪 (BufferQueue 双缓冲)
+10:17:26.681 [INFO ] [0x103] Set.cpp:176:ServiceSet_Init SET service ready
+10:17:26.681 [INFO ] [0x103] Ipc.cpp:135:RegisterService IPC: service 'apm:' registered @ 0x1044917e8
+10:17:26.681 [INFO ] [0x103] Set.cpp:177:ServiceApm_Init APM service ready
+10:17:26.681 [INFO ] [0x103] Set.cpp:178:ServiceTime_Init TIME service ready
+10:17:26.681 [INFO ] [0x103] AudioOut.cpp:213:ServiceAudioOut_Init AudioOut service ready
+10:17:26.681 [INFO ] [0x103] Pcv.cpp:206:ServicePcv_Init PCV ready
+10:17:26.681 [INFO ] [0x103] headless_main.cpp:207:main All system services initialized
+10:17:26.681 [INFO ] [0x103] headless_main.cpp:218:main Main thread handle=0xd002
+10:17:26.681 [DEBUG] [0x103] ExceptionHandler.cpp:239:EnsureInstalled Guest signal handlers installed (global, install-once): main_alt_stack=0x104488570 size=32768
+10:17:26.681 [INFO ] [0x103] headless_main.cpp:325:main TraceEngine: SVC/IPC/THREAD 通道已启用, 输出到 tests/e2e/l0_svc_heap/build/test_svc_heap.nro.trace
+10:17:26.681 [INFO ] [0x103] DebugServer.cpp:177:Start DebugServer: 监听 /tmp/m1switch_debug.sock
+10:17:26.681 [INFO ] [0x103] headless_main.cpp:329:main Starting guest...
+10:17:26.681 [INFO ] [0x1b03] NativeExec.cpp:104:RunGuest Guest: PC=0x340000000 SP=0x3c0000000
+10:17:26.681 [DEBUG] [0x1b03] ExceptionHandler.cpp:211:SetupGuestSignalStack Guest signal stack set up: sp=0x10454c000 size=0x8000 (thread)
+10:17:26.681 [INFO ] [0x1b03] ExceptionHandler.cpp:107:TrapHandler TrapHandler: PC=0x340000004 is_brk=1 tag=0x1000
+10:17:26.681 [INFO ] [0x1b03] ExceptionHandler.cpp:137:TrapHandler SVC #0x00 caught at PC=0x340000004 (tag=0x1000)
+10:17:26.681 [INFO ] [0x1b03] SvcHandlers.cpp:66:SvcSetHeapSize SvcSetHeapSize(0x100000) called
+10:17:26.681 [INFO ] [0x1b03] SvcHandlers.cpp:70:SvcSetHeapSize SvcSetHeapSize: result=0 base=0x80000000
+10:17:26.681 [ERROR] [0x1b03] ExceptionHandler.cpp:85:TrapHandler Guest signal 4 at PC=0x340000014 SP=0x3c0000000 LR=0x340000000 fault=0x340000014
+10:17:26.681 [ERROR] [0x1b03] ExceptionHandler.cpp:87:TrapHandler   x0=0x0 x1=0x380000000 x2=0x0 x3=0x0
+10:17:26.681 [INFO ] [0x1b03] NativeExec.cpp:129:RunGuest Guest exited via SVC longjmp
+10:17:26.681 [INFO ] [0x1b03] headless_main.cpp:341:operator() Guest thread returned from RunGuest (normal exit)
+10:17:26.692 [ERROR] [0x103] headless_main.cpp:362:main GUEST CRASHED
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:379:main === Trace Stats ===
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:380:main Total events: 2
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:381:main Dropped events: 0
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:384:main   SVC: 2 events
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:384:main   IPC: 0 events
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:384:main   GPU_CMD: 0 events
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:384:main   MEM: 0 events
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:384:main   CPU_EXEC: 0 events
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:384:main   THREAD: 0 events
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:390:main === Recent SVC calls ===
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:399:main   SVC #0x00 CALL: x0=0x100000 x1=0xd002
+10:17:26.692 [INFO ] [0x103] headless_main.cpp:396:main   SVC #0x00 RETURN: x0_before=0x100000 result=0x0
+10:17:26.693 [INFO ] [0x103] DebugServer.cpp:195:Stop DebugServer: 已停止

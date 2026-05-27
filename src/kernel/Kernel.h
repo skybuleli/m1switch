@@ -137,6 +137,9 @@ public:
         finished.store(true);
         wait_cv.notify_all();
         NotifyWaiters();
+        if (wake_event) {
+            wake_event->Signal();
+        }
     }
 
     void WaitUntilFinished() {

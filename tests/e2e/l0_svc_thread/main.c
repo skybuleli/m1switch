@@ -3,8 +3,7 @@
 // 验证：线程创建、启动、同步（WaitSynchronization）、TLS 隔离
 //────────────────────────────────────────────────────────────
 
-#define L0_TEST
-#include "framework.h"
+// 已迁移到 assembly (main.S)
 #include <string.h>
 
 // 共享状态（在堆上，多线程共享）

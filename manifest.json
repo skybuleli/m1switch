@@ -38,6 +38,16 @@
         "ipc_roundtrip_works": true
       }
     },
+    "m3_5": {
+      "name": "E2E NRO Test Suite",
+      "description": "L0 assembly NRO tests via devkitPro",
+      "depends_on": ["m3"],
+      "tests": ["t3.5.1", "t3.5.2", "t3.5.3", "t3.5.4", "t3.5.5"],
+      "acceptance": {
+        "min_tests_pass": 4,
+        "nro_tests_exist": true
+      }
+    },
     "m3": {
       "name": "IRON",
       "description": "First triangle via Metal (GPU command parser, shader, renderer)",
@@ -118,6 +128,36 @@
     }
   },
   "benchmarks": {
+    "t3.5.1": {
+      "name": "L0 svc_exit",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_svc_exit.nro --timeout=5",
+      "expected": { "exit_code": 0, "output_contains": "GUEST EXITED NORMALLY" }
+    },
+    "t3.5.2": {
+      "name": "L0 svc_heap",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_svc_heap.nro --timeout=5",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
+    "t3.5.3": {
+      "name": "L0 svc_sleep",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_svc_sleep.nro --timeout=5",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
+    "t3.5.4": {
+      "name": "L0 svc_output",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_svc_output.nro --timeout=5",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
+    "t3.5.5": {
+      "name": "L0 svc_thread",
+      "type": "headless",
+      "command": "./build/m1switch_headless tests/e2e/build/test_svc_thread.nro --timeout=10",
+      "expected": { "exit_code": 0, "output_contains": "TEST_PASS:" }
+    },
     "b.svc.dispatch": {
       "name": "SVC dispatch roundtrip",
       "command": "./build/m1switch_headless test-roms/bench_svc.nro --timeout=10",

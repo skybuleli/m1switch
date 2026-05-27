@@ -3,8 +3,7 @@
 // 验证：定时器精度、SVC SleepThread/GetSystemTick
 //────────────────────────────────────────────────────────────
 
-#define L0_TEST
-#include "framework.h"
+// 已迁移到 assembly (main.S)
 
 // 将系统 tick 转换为纳秒
 static inline u64 tick_to_ns(u64 ticks) {

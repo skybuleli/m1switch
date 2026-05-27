@@ -18,5 +18,6 @@ void EmuCore_SetTlsBase(u64 base);
 void SvcHandlers_SetDispatch(SvcHandlerFn fn);
 void SvcHandlers_SetCurrentTls(u64 tls);
 u64  SvcHandlers_GetCurrentTls();
+void SvcHandlers_SetCurrentThreadHandle(u32 handle);
 
 extern std::atomic<bool> g_guest_exited;

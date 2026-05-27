@@ -216,6 +216,7 @@ int main(int argc, char** argv) {
     main_thread->running.store(true);
     u32 main_handle = KernelHandleTable().Create(main_thread);
     LOG_INFO("Main thread handle=0x%x", main_handle);
+    SvcHandlers_SetCurrentThreadHandle(main_handle);
 
     // ── 6. Install SIGTRAP (必须在 patches 之前, 防止读未映射内存时静默崩溃) ──
     g_sig_handler.SetSvcDispatch([](u32 svc, GuestThreadState* st) {

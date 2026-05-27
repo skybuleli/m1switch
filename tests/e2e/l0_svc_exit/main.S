@@ -8,7 +8,11 @@
 .section .text
 .global _start
 _start:
-    // svcExitProcess() — no arguments on real Horizon OS
+    // 跳过 NRO 文件头（0x10-0x10F），跳到 0x110
+    b _entry
+    .skip 0x10C  // 填充到 0x110
+_entry:
+    // svcExitProcess()
     mov x0, #0
     mov x1, #0
     // 注意: M1Switch 的 svcExitProcess 是 SVC #0x07（非官方编号）

@@ -194,8 +194,11 @@ cmake --build build
 - [x] L0 纯汇编测试框架 (绕过 libnx crt0)
 - [x] NRO 加载器 PIE 格式兼容 (ADRP 重定位修补 + MOD0/DYNAMIC/RELR 偏移修正)
 - [x] 16K 页冲突修复 text/data 分段映射
-- [x] test_svc_exit: 最小 SVC #0x07 退出测试通过
-- [ ] L0 其余测试: test_svc_heap, test_svc_thread, test_svc_sleep, test_svc_output
+- [x] test_svc_exit: 退出测试通过
+- [x] test_svc_heap: 堆分配 + 模式写入/校验通过
+- [x] test_svc_thread: 线程创建/启动/同步通过
+- [x] test_svc_sleep: 系统时钟 + SleepSystem 通过
+- [x] test_svc_output: 调试输出多行文本通过
 - [ ] L1 服务测试: sm_getsrv, fs_romfs, set_sys, hid_npad, vi_init, applet_basic
 - [ ] switch-examples 自动编译 & 全量回归
 - [ ] CI 集成 devkitPro 编译步骤

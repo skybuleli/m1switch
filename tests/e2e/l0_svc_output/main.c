@@ -2,8 +2,7 @@
 // 向调试通道写入多行文本。验证 debug log 通道和字符串处理。
 //────────────────────────────────────────────────────────────
 
-#define L0_TEST
-#include "framework.h"
+// 已迁移到 assembly (main.S)
 #include <stdio.h>
 
 int main(int argc, char* argv[]) {

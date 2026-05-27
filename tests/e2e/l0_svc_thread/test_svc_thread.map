@@ -1,0 +1,282 @@
+
+Merging program properties
+
+
+Discarded input sections
+
+ .data          0x0000000000000000        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+ .bss           0x0000000000000000        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+ .note.gnu.property
+                0x0000000000000000        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+                0x0000000000000000                PROVIDE (__start__ = 0x0)
+                0x0000000000000000                . = __start__
+                [!provide]                        PROVIDE (__code_start = .)
+
+.text           0x0000000000000000      0x208
+ *(.crt0)
+ *(.text.unlikely .text.*_unlikely .text.unlikely.*)
+ *(.text.exit .text.exit.*)
+ *(.text.startup .text.startup.*)
+ *(.text.hot .text.hot.*)
+ *(.text .stub .text.* .gnu.linkonce.t.*)
+ .text          0x0000000000000000      0x208 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+                0x0000000000000000                _start
+                0x0000000000000208                . = ALIGN (0x8)
+
+.init           0x0000000000000208        0x0
+ *(.init)
+                0x0000000000000208                . = ALIGN (0x8)
+
+.plt            0x0000000000000208        0x0
+ *(.plt)
+ .plt           0x0000000000000208        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+ *(.iplt)
+                0x0000000000000208                . = ALIGN (0x8)
+
+.fini           0x0000000000000208        0x0
+ *(.fini)
+                0x0000000000000208                . = ALIGN (0x8)
+                0x0000000000001000                . = ALIGN (0x1000)
+                [!provide]                        PROVIDE (__rodata_start = .)
+
+.nx-module-name
+                0x0000000000001000       0x18
+ *(.nx-module-name)
+ .nx-module-name
+                0x0000000000001000       0x18 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.rela.dyn       0x0000000000001018        0x0
+ *(.rela.*)
+ .rela.got      0x0000000000001018        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+ .rela.plt      0x0000000000001018        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+ .rela.bss      0x0000000000001018        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+ .rela.data.rel.ro
+                0x0000000000001018        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.relr.dyn       0x0000000000001018        0x0
+ *(.relr.*)
+ .relr.dyn      0x0000000000001018        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.hash           0x0000000000001018       0x10
+ *(.hash)
+ .hash          0x0000000000001018       0x10 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.gnu.hash
+ *(.gnu.hash)
+
+.dynsym         0x0000000000001028       0x18
+ *(.dynsym)
+ .dynsym        0x0000000000001028       0x18 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.dynstr         0x0000000000001040        0x1
+ *(.dynstr)
+ .dynstr        0x0000000000001040        0x1 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.rodata         0x0000000000001041        0x7
+ *(.rodata .rodata.* .gnu.linkonce.r.*)
+                0x0000000000001048                . = ALIGN (0x8)
+ *fill*         0x0000000000001041        0x7 
+
+.tls.align      0x0000000000001048        0x8
+                0x0000000000001048        0x8 QUAD 0x1 MAX (ALIGNOF (.tdata), ALIGNOF (.tbss))
+                [!provide]                        PROVIDE (__tls_align = ADDR (.tls.align))
+
+.gcc_except_table
+ *(.gcc_except_table .gcc_except_table.*)
+
+.eh_frame_hdr   0x0000000000001050        0x0
+ *(.eh_frame_hdr)
+ *(.eh_frame_entry .eh_frame_entry.*)
+
+.eh_frame
+ *(.eh_frame)
+ *(.eh_frame.*)
+
+.gnu_extab
+ *(.gnu_extab*)
+
+.exception_ranges
+ *(.exception_ranges .exception_ranges*)
+                [!provide]                        PROVIDE (__eh_frame_hdr_start = ADDR (.eh_frame_hdr))
+                [!provide]                        PROVIDE (__eh_frame_hdr_end = (ADDR (.eh_frame_hdr) + SIZEOF (.eh_frame_hdr)))
+
+.gnu.version    0x0000000000001050        0x0
+ *(.gnu.version)
+ .gnu.version   0x0000000000001050        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.gnu.version_d  0x0000000000001050        0x0
+ *(.gnu.version_d)
+ .gnu.version_d
+                0x0000000000001050        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.gnu.version_r  0x0000000000001050        0x0
+ *(.gnu.version_r)
+ .gnu.version_r
+                0x0000000000001050        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.note.gnu.build-id
+                0x0000000000001050       0x24
+ *(.note.gnu.build-id)
+ .note.gnu.build-id
+                0x0000000000001050       0x24 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+                0x0000000000002000                . = ALIGN (0x1000)
+                [!provide]                        PROVIDE (__relro_start = .)
+
+.preinit_array  0x0000000000002000        0x0
+                [!provide]                        PROVIDE (__preinit_array_start = .)
+ *(.preinit_array)
+                [!provide]                        PROVIDE (__preinit_array_end = .)
+
+.init_array     0x0000000000002000        0x0
+                [!provide]                        PROVIDE (__init_array_start = .)
+ *(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*))
+ *(.init_array .ctors)
+                [!provide]                        PROVIDE (__init_array_end = .)
+
+.fini_array     0x0000000000002000        0x0
+                [!provide]                        PROVIDE (__fini_array_start = .)
+ *(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*))
+ *(.fini_array .dtors)
+                [!provide]                        PROVIDE (__fini_array_end = .)
+
+.data.rel.ro    0x0000000000002000        0x0
+ *(.data.rel.ro.local* .gnu.linkonce.d.rel.ro.local.*)
+ *(.data.rel.ro .data.rel.ro.* .gnu.linkonce.d.rel.ro.*)
+ .data.rel.ro   0x0000000000002000        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+                0x0000000000002000                . = ALIGN (0x8)
+
+.dynamic        0x0000000000002000       0xc0
+ *(.dynamic)
+ .dynamic       0x0000000000002000       0xc0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+                0x0000000000002000                _DYNAMIC
+
+.got            0x00000000000020c0        0x8
+ *(.got)
+ .got           0x00000000000020c0        0x8 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+                0x00000000000020c0                _GLOBAL_OFFSET_TABLE_
+ *(.igot)
+
+.got.plt        0x00000000000020c8       0x18
+ *(.got.plt)
+ .got.plt       0x00000000000020c8       0x18 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+ *(.igot.plt)
+                [!provide]                        PROVIDE (__got_start__ = ADDR (.got))
+                [!provide]                        PROVIDE (__got_end__ = (ADDR (.got.plt) + SIZEOF (.got.plt)))
+                0x0000000000003000                . = ALIGN (0x1000)
+                [!provide]                        PROVIDE (__data_start = .)
+
+.data           0x0000000000003000        0x0
+ *(.data .data.* .gnu.linkonce.d.*)
+                0x0000000000003000                . = ALIGN (0x8)
+
+.tdata          0x0000000000003000        0x0
+ *(.tdata .tdata.* .gnu.linkonce.td.*)
+                0x0000000000003000                . = ALIGN (0x8)
+                [!provide]                        PROVIDE (__tdata_lma = ADDR (.tdata))
+                [!provide]                        PROVIDE (__tdata_lma_end = (ADDR (.tdata) + SIZEOF (.tdata)))
+
+.tbss           0x0000000000003000        0x0
+ *(.tbss .tbss.* .gnu.linkonce.tb.*)
+ *(.tcommon)
+                0x0000000000003000                . = ALIGN (0x8)
+
+.bss            0x0000000000003000        0x0
+ *(.dynbss)
+ .dynbss        0x0000000000003000        0x0 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+ *(.bss .bss.* .gnu.linkonce.b.*)
+ *(COMMON)
+                0x0000000000003000                . = ALIGN (0x8)
+
+.main.tls       0x0000000000003000        0x0
+                0x0000000000003000                . = (. + SIZEOF (.tdata))
+                0x0000000000003000                . = ALIGN (ALIGNOF (.tbss))
+                0x0000000000003000                . = (. + SIZEOF (.tbss))
+                [!provide]                        PROVIDE (__tls_start = ADDR (.main.tls))
+                [!provide]                        PROVIDE (__tls_end = (ADDR (.main.tls) + SIZEOF (.main.tls)))
+                [!provide]                        PROVIDE (__bss_start__ = ADDR (.bss))
+                [!provide]                        PROVIDE (__bss_end__ = __tls_end)
+                [!provide]                        PROVIDE (__end__ = .)
+                0x0000000000003000                . = ALIGN (0x1000)
+                [!provide]                        PROVIDE (__argdata__ = .)
+
+/DISCARD/
+ *(.group .comment .note)
+
+.stab
+ *(.stab)
+
+.stabstr
+ *(.stabstr)
+
+.stab.excl
+ *(.stab.excl)
+
+.stab.exclstr
+ *(.stab.exclstr)
+
+.stab.index
+ *(.stab.index)
+
+.stab.indexstr
+ *(.stab.indexstr)
+
+.debug
+ *(.debug)
+
+.line
+ *(.line)
+
+.debug_srcinfo
+ *(.debug_srcinfo)
+
+.debug_sfnames
+ *(.debug_sfnames)
+
+.debug_aranges  0x0000000000000000       0x30
+ *(.debug_aranges)
+ .debug_aranges
+                0x0000000000000000       0x30 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.debug_pubnames
+ *(.debug_pubnames)
+
+.debug_info     0x0000000000000000       0x29
+ *(.debug_info)
+ .debug_info    0x0000000000000000       0x29 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.debug_abbrev   0x0000000000000000       0x14
+ *(.debug_abbrev)
+ .debug_abbrev  0x0000000000000000       0x14 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.debug_line     0x0000000000000000       0x78
+ *(.debug_line)
+ .debug_line    0x0000000000000000       0x78 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.debug_frame
+ *(.debug_frame)
+
+.debug_str      0x0000000000000000       0x45
+ *(.debug_str)
+ .debug_str     0x0000000000000000       0x45 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+
+.debug_loc
+ *(.debug_loc)
+
+.debug_macinfo
+ *(.debug_macinfo)
+LOAD /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o
+OUTPUT(build/test_svc_thread.elf elf64-littleaarch64)
+LOAD linker stubs
+
+.debug_line_str
+                0x0000000000000000       0x37
+ .debug_line_str
+                0x0000000000000000       0x37 /var/folders/7x/7_mpqm1s0sg5mk4b710fmpjh0000gn/T//ccT5A2Oc.o

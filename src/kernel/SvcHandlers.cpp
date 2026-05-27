@@ -26,9 +26,11 @@ static constexpr u64 TLS_IPC_OFFSET = 0x000;
 static constexpr u64 TLS_IPC_SIZE   = 0x100;
 
 static thread_local u64 g_current_tls = 0;
+static thread_local u32 g_current_thread_handle = 0;
 
 void SvcHandlers_SetCurrentTls(u64 tls) { g_current_tls = tls; }
 u64 SvcHandlers_GetCurrentTls() { return g_current_tls; }
+void SvcHandlers_SetCurrentThreadHandle(u32 handle) { g_current_thread_handle = handle; }
 
 static u64 GetEffectiveTlsBase() {
     return (g_current_tls != 0) ? g_current_tls : g_tls_base;
@@ -198,14 +200,13 @@ SVC(SvcStartThread) {
     auto* wake_ev = new KEvent();
     t->wake_event = wake_ev;
 
-    std::thread host([t]() {
+    std::thread host([t, handle]() {
         char name[32];
         snprintf(name, sizeof(name), "GuestT%llu", t->thread_id);
         pthread_setname_np(name);
 
         extern void SvcHandlers_SetCurrentTls(u64);
         SvcHandlers_SetCurrentTls(t->tls_base);
-
         extern void SigHandler_EnsureInstalled();
         SigHandler_EnsureInstalled();
 
@@ -214,6 +215,8 @@ SVC(SvcStartThread) {
 
         TRACE_THREAD(THREAD_START, (u64)t->thread_id, t->entry_point);
 
+        // 记录当前线程句柄（ExitThread 需要它来标记线程完成）
+        g_current_thread_handle = handle;
         NativeExec::RunGuest(t->entry_point, t->stack_top, t->tls_base, t->arg, 0, 0);
 
         t->running.store(false);
@@ -228,7 +231,15 @@ SVC(SvcStartThread) {
 }
 
 SVC(SvcExitThread) {
-    LOG_INFO("ExitThread");
+    LOG_INFO("ExitThread(handle=0x%x)", g_current_thread_handle);
+    if (g_current_thread_handle != 0) {
+        auto* t = KernelHandleTable().Get<KThread>(g_current_thread_handle);
+        if (t) {
+            t->running.store(false);
+            t->MarkFinished();
+        }
+    }
+    g_current_thread_handle = 0;
     pthread_exit(nullptr);
 }
 

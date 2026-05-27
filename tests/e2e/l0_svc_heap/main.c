@@ -3,8 +3,7 @@
 // 验证：SVC SetHeapSize、内存映射、guest -> host 地址转换
 //────────────────────────────────────────────────────────────
 
-#define L0_TEST
-#include "framework.h"
+// 已迁移到 assembly (main.S)
 #include <string.h>
 
 int main(int argc, char* argv[]) {
