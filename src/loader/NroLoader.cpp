@@ -363,11 +363,15 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         if (Failed(r)) LOG_WARN("Protect .text RX failed: %d", (int)r);
         else LOG_INFO("Protected .text as RX (%llu bytes)", text_page_sz);
     }
-    // .rodata → R: 只保护 .text 映射末尾之后、.data 之前的区域
+    // .rodata → R: 只保护 .text 映射末尾之后、.data 之前的区域（页对齐）
+    // 注意: mach_vm_protect 以 HOST_PAGE(16K) 为粒度。若 .rodata 与 .data 共享页，
+    // 保护该页为 R 会使 .data 也变为只读。因此 rodata 保护终点下取整到页边界。
     if (rodata_size > 0) {
         u64 rodata_r_start = text_addr + text_page_sz;  // text 映射结束处
-        // rodata 保护不能覆盖 .data 段（.data 必须是 RW）
-        u64 rodata_r_end   = (data_size > 0) ? data_addr : (rodata_addr + rodata_page_sz);
+        // .data 起始页之前 = rodata 保护终点（下取整到 HOST_PAGE 边界）
+        u64 rodata_r_end   = (data_size > 0)
+            ? (data_addr & ~(HOST_PAGE - 1))
+            : (rodata_addr + rodata_page_sz);
         if (rodata_r_start < rodata_r_end) {
             Result r = memory_.Protect(rodata_r_start, rodata_r_end - rodata_r_start,
                                        Memory::Permission::R);
