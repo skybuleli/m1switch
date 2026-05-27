@@ -67,10 +67,9 @@ void EmulatorCore::InitServices() {
     // 预先映射 HID 共享内存，供 EmuScreenView::drawInMTKView 每帧写入输入状态
     memory_.MapPhysical(0xE1000000, 0x40000, Memory::Permission::RW);
 
-    // 预先映射 GPU 地址空间 (0x20000000-0x20FFFFFF, 16MB)
-    if (Failed(memory_.MapPhysical(0x20000000, 0x1000000, Memory::Permission::RW))) {
-        LOG_WARN("GPU 地址空间 0x20000000 映射失败");
-    }
+    // GPU address space mapping at 0x20000000 conflicts with host memory layout
+    // (mach_vm_map at base_addr_+0x20000000 = 0x320000000 causes host corruption)
+    // This will need a different approach (e.g. demand-paging through signal handler)
 
     tracker_.SetMemory(&memory_);
     ServiceNv_SetMemory(&memory_);

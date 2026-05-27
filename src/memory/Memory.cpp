@@ -21,20 +21,6 @@ static int mach_vm_prot_from_perm(Memory::Permission perm) {
 
 Memory::Memory() {
     base_addr_ = 0x300000000ULL;
-
-    // 预留整个 4GB 客户机地址空间，防止 Metal/CoreAudio 等子系统映射到其中
-    kern_return_t kr = mach_vm_map(
-        mach_task_self(),
-        (mach_vm_address_t*)&base_addr_, ADDR_SPACE_SIZE, 0,
-        VM_FLAGS_FIXED,
-        MEMORY_OBJECT_NULL, 0, FALSE,
-        VM_PROT_NONE,      // 初始无权限（页面按需通过 MapPhysical 分配）
-        VM_PROT_NONE,
-        VM_INHERIT_NONE);
-    if (kr != KERN_SUCCESS) {
-        LOG_ERROR("Memory: failed to reserve 4GB at 0x%llx: kr=%d", base_addr_, kr);
-        base_addr_ = 0;
-    }
     base_ = reinterpret_cast<void*>(base_addr_);
     LOG_INFO("Guest memory base: 0x%llx (4 GiB virtual address space)", base_addr_);
 }
