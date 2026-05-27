@@ -67,6 +67,10 @@ void EmulatorCore::InitServices() {
     // 预先映射 HID 共享内存，供 EmuScreenView::drawInMTKView 每帧写入输入状态
     memory_.MapPhysical(0xE1000000, 0x40000, Memory::Permission::RW);
 
+    // 预先映射 GPU 地址空间起始 (0x20000000-0x20FFFFFF, 16MB)
+    // Switch GPU GMMU 在此范围分配 GPU 虚拟地址，SDL2/Mesa 硬编码使用此范围
+    memory_.MapPhysical(0x20000000, 0x1000000, Memory::Permission::RW);
+
     tracker_.SetMemory(&memory_);
     ServiceNv_SetMemory(&memory_);
     ServiceNv_SetTracker(&tracker_);

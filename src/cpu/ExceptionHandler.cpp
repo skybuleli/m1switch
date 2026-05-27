@@ -44,22 +44,6 @@ void SigHandler::TrapHandler(int sig, siginfo_t* info, void* uap) {
     u64 pc = ss.__pc;
 
     if (sig != SIGTRAP) {
-        // 按需映射 GPU/GMMU 地址空间 (0x20000000-0x3FFFFFFF)
-        u64 fault_addr = info ? (u64)info->si_addr : 0;
-        if (sig == SIGSEGV && fault_addr >= 0x20000000 && fault_addr < 0x40000000) {
-            extern Memory* g_mem;
-            if (g_mem) {
-                u64 map_base = fault_addr & ~(u64)0x3FFF; // 16K 对齐
-                LOG_WARN("Demand-mapping GPU page at 0x%llx", map_base);
-                Result r = g_mem->MapPhysical(map_base, 0x4000, Memory::Permission::RW);
-                if (Failed(r)) {
-                    LOG_ERROR("Demand-map failed at 0x%llx: %d", map_base, (int)r);
-                } else {
-                    // 映射成功，回到原指令重新执行（不修改 PC）
-                    return;
-                }
-            }
-        }
         LOG_ERROR("Guest signal %d at PC=0x%llx SP=0x%llx LR=0x%llx fault=%p",
                   sig, pc, (u64)ss.__sp, (u64)ss.__lr, info ? info->si_addr : nullptr);
         LOG_ERROR("  x0=0x%llx x1=0x%llx x2=0x%llx x3=0x%llx",
