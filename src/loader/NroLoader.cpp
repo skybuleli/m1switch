@@ -182,50 +182,47 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
         }
     }
 
-    // ── Map segments (all before relocations) ─────────────
-    // 重要: Apple Silicon 使用 16K 硬件页。
-    // 段地址必须与原始 NRO 布局一致（PC-relative ADRP 引用依赖段间相对位置不变）。
-    // 但 mach_vm_map 要求地址 16K 对齐，所以将映射大小上取整到 16K，
-    // 并允许后续映射与前一映射的末尾 16K 填充区域重叠（使用 VM_FLAGS_OVERWRITE）。
-    u64 text_addr     = NRO_TEXT_BASE;
+    // ── Map segments ─────────────────────────────────────
+    // 重要: Apple Silicon 使用 16K 硬件页。各段的理想地址可能在 16K 边界内偏移，
+    // 导致段间 16K 页重叠。为解决此问题，将 [text_start, bss_end] 整个范围
+    // 一次性映射为 RW，然后逐段 memcpy 数据，最后分段设置权限。
+    u64 text_addr     = NRO_TEXT_BASE;                    // 0x40000000
     u64 text_page_sz  = AlignUp(static_cast<u64>(text_size), HOST_PAGE);
-    u64 rodata_addr   = NRO_TEXT_BASE + static_cast<u64>(rodata_start);
+    u64 rodata_addr   = NRO_TEXT_BASE + static_cast<u64>(rodata_start);  // 0x40486000
     u64 rodata_page_sz = AlignUp(static_cast<u64>(rodata_size), HOST_PAGE);
-    u64 data_addr     = NRO_TEXT_BASE + static_cast<u64>(data_start);
+    u64 data_addr     = NRO_TEXT_BASE + static_cast<u64>(data_start);    // 0x4064c000
     u64 data_page_sz  = AlignUp(static_cast<u64>(data_size), HOST_PAGE);
     u64 bss_addr      = AlignUp(data_addr + data_page_sz, HOST_PAGE);
     u64 bss_page_sz   = AlignUp(static_cast<u64>(bss_size), HOST_PAGE);
 
-    // 1. .text → RW (will switch to RX after patching)
+    // 连续区域: 从 text 到 bss 末尾
+    u64 whole_start = text_addr;
+    u64 whole_end   = AlignUp(bss_addr + bss_page_sz, HOST_PAGE);
+    u64 whole_sz    = whole_end - whole_start;
+
     {
-        Result r = memory_.MapPhysical(text_addr, text_page_sz, Memory::Permission::RW,
-                                        buffer.data() + text_start);
-        if (Failed(r)) return r;
+        // 一次性映射整个区域（禁止分段重叠导致 deallocate 破坏已有页）
+        Result r = memory_.MapPhysical(whole_start, whole_sz, Memory::Permission::RW);
+        if (Failed(r)) { LOG_ERROR("Failed to map NRO segments"); return r; }
+
+        // 逐段写入数据
+        u8* base_ptr = memory_.Pointer(whole_start);
+        if (base_ptr) {
+            if (text_size > 0)
+                std::memcpy(base_ptr + (text_addr - whole_start),
+                            buffer.data() + text_start, text_size);
+            if (rodata_size > 0)
+                std::memcpy(base_ptr + (rodata_addr - whole_start),
+                            buffer.data() + rodata_start, rodata_size);
+            if (data_size > 0)
+                std::memcpy(base_ptr + (data_addr - whole_start),
+                            buffer.data() + data_start, data_size);
+        }
+        // .bss 在 MapPhysical 中不传 data 参数时自动清零
     }
 
-    // 2. .rodata → RW (will switch to R after relocations)
-    if (rodata_size > 0) {
-        Result r = memory_.MapPhysical(rodata_addr, rodata_page_sz, Memory::Permission::RW,
-                                        buffer.data() + rodata_start);
-        if (Failed(r)) return r;
-    }
-
-    // 3. .data → RW
-    if (data_size > 0) {
-        Result r = memory_.MapPhysical(data_addr, data_page_sz, Memory::Permission::RW,
-                                        buffer.data() + data_start);
-        if (Failed(r)) return r;
-    }
-
-    // 4. .bss → RW (zero-filled)
-    if (bss_size > 0) {
-        Result r = memory_.MapPhysical(bss_addr, bss_page_sz, Memory::Permission::RW);
-        if (Failed(r)) return r;
-        auto* ptr = memory_.Pointer(bss_addr);
-        if (ptr) std::memset(ptr, 0, bss_size);
-        info.bss_address = bss_addr;
-        info.bss_size = bss_size;
-    }
+    info.bss_address = bss_addr;
+    info.bss_size = bss_size;
 
     // ── Patch SVCs (while .text is still RW) ─────────────
     {
@@ -360,16 +357,23 @@ Result NroLoader::LoadFromBuffer(std::span<const u8> buffer,
 
     // ── Protect segments ─────────────────────────────
     // .text → RX (no more writes)
+    // 注意: 先保护 .text(包含与 rodata 的重叠页)，rodata 只保护非重叠部分
     {
         Result r = memory_.Protect(text_addr, text_page_sz, Memory::Permission::RX);
         if (Failed(r)) LOG_WARN("Protect .text RX failed: %d", (int)r);
         else LOG_INFO("Protected .text as RX (%llu bytes)", text_page_sz);
     }
-    // .rodata → R (no more writes after relocations)
+    // .rodata → R: 只保护 .text 映射末尾之后的区域（避免覆盖 .text 尾部为非执行）
     if (rodata_size > 0) {
-        Result r = memory_.Protect(rodata_addr, rodata_page_sz, Memory::Permission::R);
-        if (Failed(r)) LOG_WARN("Protect .rodata R failed: %d", (int)r);
-        else LOG_INFO("Protected .rodata as R (%llu bytes)", rodata_page_sz);
+        u64 rodata_r_start = text_addr + text_page_sz;  // text 映射结束处
+        u64 rodata_r_end   = rodata_addr + rodata_page_sz;
+        if (rodata_r_start < rodata_r_end) {
+            Result r = memory_.Protect(rodata_r_start, rodata_r_end - rodata_r_start,
+                                       Memory::Permission::R);
+            if (Failed(r)) LOG_WARN("Protect .rodata R failed: %d", (int)r);
+            else LOG_INFO("Protected .rodata as R (%llu bytes @ 0x%llx)",
+                          rodata_r_end - rodata_r_start, rodata_r_start);
+        }
     }
 
     // ── Record segments in info ──────────────────────────
