@@ -113,6 +113,7 @@ cmake --build build
 - [x] **BUGFIX**: NvMap 分配从 guest 堆改为专用 carveout 区域 (0xD0000000)，避免 SetHeapSize unmap+remap 清空堆数据 (致命 NV GPU 初始化阻塞)
 - [x] **BUGFIX**: VI 帧缓冲 0xE0000000 延迟映射 — 构造时 g_vi_memory 为 null，改在 ServiceVi_Init 中映射 (致命 VI 显示初始化阻塞)
 - [x] **BUGFIX**: SM 服务映射表补充 vi:u / nvmap: / nvhost-ctrl: (提高服务名匹配兼容性)
+- [x] **BUGFIX**: 域模式 handle_pos 为空导致 domain object 追踪失效 — IPC 后处理放宽条件允许域模式在 handle_pos==null 时继续执行对象 ID 分配 (Ipc.cpp:522-524)
 
 **Phase 3** — Services & IPC (Complete)
 - [x] SM service (service manager)

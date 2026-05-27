@@ -519,7 +519,9 @@ u32 IpcManager::HandleRequest(u32 session_handle, const u8* data, size_t size,
 
     // 后处理：从 raw_out 提取 move/copy handle（服务将句柄写入 raw_out[0..3]）
     // 控制命令(type=5)不提取，防止 domain_id 被误提取为句柄
-    if (handled && handle_pos && !is_control && raw_out_max >= 4) {
+    // 域模式不需要 handle_pos（域分支使用 domain_object_id 而非句柄），
+    // 非域模式仍需 handle_pos 来写入 move/copy handle 到响应头部。
+    if (handled && !is_control && raw_out_max >= 4 && (handle_pos || (session && session->is_domain))) {
         u32 move_handle = 0;
         std::memcpy(&move_handle, raw_out, sizeof(move_handle));
         if (move_handle != 0) {
