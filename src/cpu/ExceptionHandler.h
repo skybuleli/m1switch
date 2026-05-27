@@ -36,6 +36,10 @@ private:
     SvcHandlerFn dispatch_;
 };
 
+// JIT 区域跟踪（由 Memory/加载器写入，信号处理函数读取用于 MAP_JIT W/X 切换）
+extern uint64_t g_jit_region_start;
+extern uint64_t g_jit_region_end;
+
 void SigHandler_EnsureInstalled();
 
 // 设置当前线程的替代信号栈（避免信号处理函数覆盖 guest 栈数据）

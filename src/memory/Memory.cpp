@@ -1,7 +1,11 @@
 #include "memory/Memory.h"
+#include "common/Log.h"
+#include "cpu/ExceptionHandler.h"
 #include <mach/mach_vm.h>
 #include <cstring>
 #include <algorithm>
+#include <sys/mman.h>
+#include <pthread.h>
 
 // ── Permission conversion ───────────────────────────────────
 static int mach_vm_prot_from_perm(Memory::Permission perm) {
@@ -56,22 +60,33 @@ Result Memory::MapPhysical(u64 address, size_t size, Permission perm,
     // 先释放目标区域（允许重叠）
     mach_vm_deallocate(mach_task_self(), map_addr, map_size);
 
-    kern_return_t kr = mach_vm_map(
+    kern_return_t kr = KERN_FAILURE;
+    // 使用 mach_vm_map 分配内存（始终设置最大权限为 RWX）
+    // 尝试 MAP_JIT 标志以支持可写可执行切换
+    mach_vm_deallocate(mach_task_self(), map_addr, map_size);
+
+    int map_flags = VM_FLAGS_FIXED;
+
+    kr = mach_vm_map(
         mach_task_self(), &map_addr, map_size, 0,
-        VM_FLAGS_FIXED,
+        map_flags,
         MEMORY_OBJECT_NULL, 0, FALSE,
         VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE,
         VM_INHERIT_NONE);
 
+    // macOS 上不支持 MAP_JIT，保持普通映射
+
     if (kr != KERN_SUCCESS) {
-        LOG_ERROR("MapPhysical(0x%llx, %zu): mach_vm_map failed at 0x%llx+%zu: kr=%d",
-                  address, size, map_addr, map_size, kr);
+        LOG_ERROR("MapPhysical(0x%llx, %zu): map failed: address=0x%llx size=%llu kr=%d",
+                  address, size, map_addr, (u64)map_size, kr);
         return Result::OutOfMemory;
     }
 
     // abs_addr 更新为映射基址 + 页内偏移（与 Pointer() 计算一致）
     abs_addr = map_addr + page_off;
+
+    // 数据复制前不需要特殊 JIT 处理
 
     // Copy initial data while writable
     if (data) {

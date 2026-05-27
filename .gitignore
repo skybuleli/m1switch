@@ -33,3 +33,4 @@ tests/fixtures/roms/*
 
 # Generated
 *.generated.h
+.alma-snapshots

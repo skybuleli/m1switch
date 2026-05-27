@@ -24,6 +24,13 @@ void BrkCache_Clear() { g_brk_cache.clear(); }
 extern thread_local sigjmp_buf g_guest_exit_jmp_buf;
 extern thread_local bool g_guest_exit_jmp_valid;
 extern std::atomic<bool> g_guest_crashed;
+extern std::atomic<bool> g_guest_exited;
+
+// JIT 区域（由 Memory 模块设置，用于 MAP_JIT W/X 切换）
+uint64_t g_jit_region_start = 0;
+uint64_t g_jit_region_end = 0;
+
+#include <pthread.h>
 
 constexpr u32 BRK_MASK = 0xFFE0001F;  // bits [31:24]=0xD4, [23:21]=000, [4:0]=00000
 constexpr u32 BRK_PATTERN = 0xD4200000;
@@ -44,6 +51,36 @@ void SigHandler::TrapHandler(int sig, siginfo_t* info, void* uap) {
     u64 pc = ss.__pc;
 
     if (sig != SIGTRAP) {
+        // ── MAP_JIT W/X 切换 ──────────────────────────
+        // 使用 MAP_JIT 时，Apple Silicon 不允许页同时可写和可执行。
+        // 写时 SIGBUS（X 模式），取指时 SIGBUS（W 模式）。
+        // 检查故障地址是否在 JIT 区域内，如果是则切换模式后重试。
+        if (g_jit_region_start != 0 && g_jit_region_end != 0) {
+            u64 fault_addr = info ? (u64)info->si_addr : 0;
+            bool in_jit_region = (fault_addr >= g_jit_region_start &&
+                                   fault_addr < g_jit_region_end);
+            bool pc_in_jit = (pc >= g_jit_region_start && pc < g_jit_region_end);
+
+            if (in_jit_region || pc_in_jit) {
+                // JIT 页 W/X 切换：交替到另一模式后重试
+                // 信号处理器不跟踪当前状态，每次切换一次。
+                // 如果指令在切换后成功执行，下一条指令可能再次故障（模式相反），
+                // 但信号处理器会再次切换。这一 ping-pong 会在短时间内收敛。
+                extern void pthread_jit_write_protect_np(int);
+                static thread_local int jit_toggle = 0;
+                jit_toggle ^= 1;
+                if (jit_toggle) {
+                    pthread_jit_write_protect_np(1);  // → X 模式（执行）
+                } else {
+                    pthread_jit_write_protect_np(0);  // → W 模式（写入）
+                }
+                ss.__pc = pc;
+                LOG_TRACE("JIT toggle: PC=0x%llx fault=0x%llx → %s",
+                          pc, fault_addr, jit_toggle ? "X" : "W");
+                return;
+            }
+        }
+
         LOG_ERROR("Guest signal %d at PC=0x%llx SP=0x%llx LR=0x%llx fault=%p",
                   sig, pc, (u64)ss.__sp, (u64)ss.__lr, info ? info->si_addr : nullptr);
         LOG_ERROR("  x0=0x%llx x1=0x%llx x2=0x%llx x3=0x%llx",

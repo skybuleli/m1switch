@@ -1,10 +1,12 @@
 #include "cpu/NativeExec.h"
 #include "cpu/ExceptionHandler.h"
 #include "kernel/SvcTable.h"
+#include "cpu/Debugger.h"
 #include <cstring>
 #include <csetjmp>
 #include <mach/mach.h>
 #include <sys/mman.h>
+#include <pthread.h>
 
 extern "C" void GuestTrampoline(u64 entry_point, u64 stack_top,
                                 u64 arg0, u64 arg1, u64 arg2);
@@ -100,6 +102,14 @@ Result NativeExec::PatchSVCs(u8* code, u64 size,
 void NativeExec::RunGuest(u64 abs_entry, u64 abs_stack, u64 tls_base,
                           u64 arg0, u64 arg1, u64 arg2) {
     LOG_INFO("Guest: PC=0x%llx SP=0x%llx", abs_entry, abs_stack);
+
+    // 如果入口在 MAP_JIT 区域内，切换为可执行模式
+    // pthread_jit_write_protect_np(0) = 可写不可执行
+    // pthread_jit_write_protect_np(1) = 可执行不可写
+    if (g_jit_region_start != 0 && abs_entry >= g_jit_region_start &&
+        abs_entry < g_jit_region_end) {
+        pthread_jit_write_protect_np(1);
+    }
 
     Result sr = SetupGuestSignalStack();
     if (Failed(sr)) {

@@ -188,6 +188,44 @@ cmake --build build
 - [x] SnapshotManager: 完整状态快照 (CPU 寄存器 + SVC 历史)
 - [x] SnapshotManager: 自动快照 (按 SVC 间隔或帧间隔)
 
+**Phase 9** — E2E Test Suite & NRO Compatibility (In Progress)
+- [x] devkitPro + libnx 工具链集成
+- [x] 分层测试 NRO 架构 (tests/e2e/): L0 裸 syscall / L1 单服务
+- [x] L0 纯汇编测试框架 (绕过 libnx crt0)
+- [x] NRO 加载器 PIE 格式兼容 (ADRP 重定位修补 + MOD0/DYNAMIC/RELR 偏移修正)
+- [x] 16K 页冲突修复 text/data 分段映射
+- [x] test_svc_exit: 最小 SVC #0x07 退出测试通过
+- [ ] L0 其余测试: test_svc_heap, test_svc_thread, test_svc_sleep, test_svc_output
+- [ ] L1 服务测试: sm_getsrv, fs_romfs, set_sys, hid_npad, vi_init, applet_basic
+- [ ] switch-examples 自动编译 & 全量回归
+- [ ] CI 集成 devkitPro 编译步骤
+
+## E2E Test Suite
+
+```
+tests/e2e/
+├── Makefile              ← 顶层构建入口
+├── build_all.sh          ← 一键构建脚本
+├── common/
+│   ├── framework.h       ← 测试宏 (TEST_PASS/FAIL/SKIP/INFO + 断言)
+│   └── common.mk         ← 共享构建规则 (devkitA64)
+├── l0_svc_exit/
+│   ├── main.S            ← 纯汇编: svcExitProcess
+│   └── Makefile
+├── l0_svc_heap/          ← 内存分配 + 模式写入/校验
+├── l0_svc_thread/        ← 线程创建 + 同步
+├── l0_svc_sleep/         ← 定时器精度
+├── l0_svc_output/        ← 调试输出通道
+├── l1_sm_getsrv/         ← 服务发现测试 (37+ 服务)
+├── l1_fs_romfs/          ← RomFS 文件读取
+├── l1_set_sys/           ← 系统设置读取
+├── l1_hid_npad/          ← HID 手柄初始化
+├── l1_vi_init/           ← 帧缓冲初始化
+└── l1_applet_basic/      ← Applet 生命周期
+```
+
+构建: `DEVKITPRO=/opt/devkitpro make -C tests/e2e`
+
 ## License
 
 MIT
