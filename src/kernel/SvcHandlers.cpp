@@ -346,11 +346,23 @@ SVC(SvcResetSignal) {
 }
 
 SVC(SvcWaitSynchronization) {
-    u64 handles_ptr = Arg(state, 0);
-    u32 num_handles = (u32)Arg(state, 1);
-    s64 timeout = (s64)Arg(state, 2);
+    // libnx 调用约定:
+    //   x0 = index (输出指针)
+    //   x1 = handles (输入句柄数组)
+    //   x2 = handleCount
+    //   x3 = timeout (纳秒)
+    u64 index_ptr   = Arg(state, 0);
+    u64 handles_ptr = Arg(state, 1);
+    s32 num_handles = (s32)Arg(state, 2);
+    s64 timeout     = (s64)Arg(state, 3);
 
-    LOG_DEBUG("WaitSynchronization(ptr=0x%llx, n=%u, timeout=%lld)", handles_ptr, num_handles, timeout);
+    LOG_DEBUG("WaitSynchronization(idx=0x%llx, ptr=0x%llx, n=%d, timeout=%lld)", index_ptr, handles_ptr, num_handles, timeout);
+
+    if (g_mem && num_handles > 0) {
+        u32 dbg_h = 0;
+        g_mem->Read(handles_ptr, &dbg_h);
+        LOG_INFO("WaitSync: handles[0]=0x%x", dbg_h);
+    }
 
     if (num_handles == 0 || !g_mem) {
         if (timeout > 0) {
