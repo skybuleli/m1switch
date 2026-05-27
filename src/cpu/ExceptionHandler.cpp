@@ -55,7 +55,7 @@ void SigHandler::TrapHandler(int sig, siginfo_t* info, void* uap) {
                 if (Failed(r)) {
                     LOG_ERROR("Demand-map failed at 0x%llx: %d", map_base, (int)r);
                 } else {
-                    ss.__pc = pc + 4; // 跳过指令重试
+                    // 映射成功，回到原指令重新执行（不修改 PC）
                     return;
                 }
             }
